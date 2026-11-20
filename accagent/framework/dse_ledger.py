@@ -11,7 +11,12 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+try:  # Python 3.11+ exposes UTC; keep the framework usable on Python 3.10.
+    from datetime import UTC
+except ImportError:  # pragma: no cover - exercised by the Python 3.10 runtime
+    UTC = timezone.utc
 from pathlib import Path
 from typing import Any
 

@@ -13,6 +13,7 @@ from accagent.framework.dse_ledger import (
     candidate_fingerprint,
     complete_metrics,
     load_latest,
+    utc_now,
 )
 
 
@@ -33,6 +34,9 @@ class DseLedgerTest(unittest.TestCase):
             "performance_tokens_per_second": 10_000.0,
             "performance_model": "synthesizable_dut_counter",
         }
+
+    def test_utc_timestamp_uses_z_suffix(self) -> None:
+        self.assertTrue(utc_now().endswith("Z"))
 
     def test_measured_row_requires_all_four_real_metrics(self) -> None:
         self.assertTrue(complete_metrics(self.metrics))

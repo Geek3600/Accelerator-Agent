@@ -1,0 +1,561 @@
+\documentclass[9pt,conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+%Template version as of 6/27/2024
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{multirow}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    citecolor=black,
+    linkcolor=black,
+    urlcolor=black
+}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\begin{document}
+
+\title{ACCORD: Dependency-Aware Multi-Agent Framework for End-to-End FPGA Spatial Accelerator Design for LLMs\\
+}
+
+% \author{\IEEEauthorblockN{1\textsuperscript{st} Given Name Surname}
+% \IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+% \textit{name of organization (of Aff.)}\\
+% City, Country \\
+% email address or ORCID}
+% \and
+% \IEEEauthorblockN{2\textsuperscript{nd} Given Name Surname}
+% \IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+% \textit{name of organization (of Aff.)}\\
+% City, Country \\
+% email address or ORCID}
+% \and
+% \IEEEauthorblockN{3\textsuperscript{rd} Given Name Surname}
+% \IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+% \textit{name of organization (of Aff.)}\\
+% City, Country \\
+% email address or ORCID}
+% \and
+% \IEEEauthorblockN{4\textsuperscript{th} Given Name Surname}
+% \IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+% \textit{name of organization (of Aff.)}\\
+% City, Country \\
+% email address or ORCID}
+% \and
+% \IEEEauthorblockN{5\textsuperscript{th} Given Name Surname}
+% \IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+% \textit{name of organization (of Aff.)}\\
+% City, Country \\
+% email address or ORCID}
+% \and
+% \IEEEauthorblockN{6\textsuperscript{th} Given Name Surname}
+% \IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+% \textit{name of organization (of Aff.)}\\
+% City, Country \\
+% email address or ORCID}
+% }
+
+\maketitle
+
+\looseness=-1
+\begin{abstract}
+Automating end-to-end FPGA spatial accelerator design for large language model (LLM) inference is challenging because architectural choices, RTL structures, and physical constraints are tightly coupled across design stages. While compiler frameworks provide structured state management, they are restricted to predefined templates and static rules. Conversely, LLM-based agents offer flexible code adaptation and tool use, but rely on fragile interaction histories—easily breaking cross-stage consistency during forward design and falling into prolonged local symptom repair upon late-stage failures. We propose ACCORD, a multi-agent framework that unites compiler-like structured design state management with flexible agentic adaptation via dependency-aware design state management. At the core of ACCORD is a Design Dependency Graph (DDG) linking cross-stage invariants, design artifacts, and versioned verification and EDA results. Guided by the DDG, agents design spatial accelerators from extensible templates, explore hardware-bound configurations, generate RTL, and iteratively refine implementations with tool feedback—enforcing forward constraint propagation, backward root-cause tracing, and incremental revalidation. Across diverse LLM workloads, ACCORD 
+\end{abstract}
+
+\begin{IEEEkeywords}
+FPGA spatial accelerator, large language model inference, multi-agent hardware design, Design Dependency Graph, cross-stage consistency, root-cause tracing.
+\end{IEEEkeywords}
+
+\begin{figure*}[t!]
+    \centering
+    \includegraphics[width=0.9\linewidth]{pictures/ACCORD_Challenges_motivation.pdf}
+    \caption{Core challenges in multi-stage agentic hardware design and ACCORD's solutions: (top) preserving cross-stage consistency during forward design and backward refinement via a shared design state, and (bottom) diagnosing upstream root causes of late-stage failures via dependency-guided tracing.}
+    \label{fig:motivation}
+\end{figure*}
+
+\section{Introduction}
+\looseness=-1
+The growing computational and memory bandwidth demands of large language model (LLM) inference have propelled the adoption of spatial dataflow architectures on FPGAs~\cite{streamtensor}. By streaming intermediate data across spatially parallel compute nodes, these architectures minimize off-chip memory traffic and maximize pipeline parallelism. However, designing and implementing an efficient end-to-end FPGA spatial accelerator remains challenging. Because spatial nodes are tightly coupled through streaming interfaces, producer–consumer rates, and on-chip resources (e.g., DSPs, BRAMs, and routing), architectural choices, RTL micro-architectures, and physical constraints are deeply intertwined. An upstream design parameter often constrains multiple downstream stages, requiring their implementations to remain consistent with the original decision. Conversely, failures detected during downstream verification may require revising earlier design decisions and updating the affected stages accordingly. Addressing these recurring cross-stage inconsistencies therefore requires extensive manual coordination and repeated design iterations.
+
+\looseness=-1
+To alleviate the complexity of end-to-end FPGA spatial accelerator design, prior research has explored two major automation paradigms: compiler-based frameworks and LLM-based agents. However, both paradigms struggle to simultaneously achieve design flexibility and cross-stage consistency. Compiler- and high-level synthesis (HLS)-based frameworks, such as Allo~\cite{allo}, StreamHLS~\cite{streamhls}, and StreamTensor~\cite{streamtensor}, inherently provide structured design state management through well-defined intermediate representations (IRs) and transformation passes, enabling efficient end-to-end design of FPGA spatial accelerators. However, their design space is restricted to predefined rules, limiting their ability to implement custom micro-architectural optimizations (e.g., custom mixed-precision or irregular dataflow fusion) or restructure designs beyond built-in transformations. Conversely, by leveraging broad parametric knowledge and tool use, LLM-based agents offer open-ended generative flexibility across RTL generation and debugging~\cite{mage,rtlfixer}, verification~\cite{assertllm,correctbench}, HLS pragma tuning~\cite{hlspilot}, and accelerator-level design~\cite{mahl,gpt4aigchip,designconductor2}. However, unlike compilers, existing agents lack explicit, structured design state management. Relying on unstructured interaction histories, they often make unconstrained local edits without maintaining system-wide invariants, easily breaking cross-stage consistency leading to interface mismatches, system-level integration failures, and costly design rework.
+
+\looseness=-1
+The key to achieving end-to-end agentic FPGA spatial accelerator design lies not in treating individual design stages as isolated tasks, but in keeping their evolving design states aligned throughout the entire design process. Because upstream architectural choices typically constrain multiple downstream stages and physical feedback often forces cross-stage revisions, isolated stage-level checks cannot guarantee the final correctness and feasibility of the integrated design. This raises a fundamental question: \textbf{How can we maintain a globally verifiable design state throughout an iterative, multi-stage, agent-driven hardware design process under strict physical constraints?} Addressing this question entails resolving two core challenges:
+\looseness=-1
+\begin{itemize}
+\item \textbf{Preserving multi-level structural and behavioral consistency during forward design.} Early architectural decisions—spanning tensor partitioning, data-packing formats, and inter-node throughput ratios—impose strict invariants on downstream RTL/HLS implementation and testbench generation. When agents rely solely on lengthy, unstructured context histories, these cross-stage constraints inevitably drift across multi-stage design process~\cite{lostmiddle,longbench,locomo}, yielding locally valid modules that fail to integrate due to banking conflicts, interfaces mismatches, or rate imbalances.
+\looseness=-1
+\item \textbf{Attributing downstream failures to cross-stage root causes without prolonged repair.} Downstream verification mismatches or physical failures (e.g., timing violations, resource overflow, or FIFO deadlocks) frequently stem from incorrect architectural decisions made in earlier design stages. Without explicit design state management to support dependency tracing, agents often fall into local symptom repair~\cite{swesearch}—repeatedly patching individual modules while ignoring upstream root causes. Worse, ad-hoc local edits (e.g., altering module parameters or interface bitwidths) can break cross-module parameter consistency and introduce new errors while fixing existing ones, leading to prolonged, ineffective repair cycles.
+\end{itemize}
+
+\looseness=-1
+To address these challenges, we propose \textbf{ACCORD}, a dependency-aware multi-agent framework for end-to-end FPGA spatial accelerator design. ACCORD combines compiler-like structured design state management with the adaptive reasoning and tool-use capabilities of LLM agents through \emph{dependency-aware design state management} of a shared state $S_t=(G_t,A_t,R_t)$. Here, $G_t$ is a \emph{Design Dependency Graph (DDG)} capturing architectural, interface, and resource invariants alongside cross-stage dependencies; $A_t$ stores evolving design artifacts; and $R_t$ records versioned verification and EDA tool results. Guided by $S_t$, specialized agents construct spatial pipelines from extensible parameterized templates, hardware-feasible design configurations, and iteratively refine implementations with EDA feedback. Upon any design modification, the DDG enforces forward constraint propagation, guides backward root-cause tracing, and invalidates outdated verification results in $R_t$ and triggers incremental revalidation. Our main contributions are:
+\begin{itemize}
+\item \textbf{Dependency-aware multi-agent design.} We present ACCORD, an end-to-end FPGA spatial accelerator design framework that integrates structured, deterministic design state management with flexible LLM-driven architecture exploration, RTL generation, and EDA-guided iterative refinement.
+\item \textbf{Design Dependency Graph (DDG) abstraction.} We introduce the DDG to explicitly model cross-stage design constraints and dependencies among architectural decisions, generated artifacts, and versioned verification results, enabling deterministic constraint checking and consistent propagation of design changes.
+\item \textbf{Dependency-guided repair and closure.} We develop a DDG-based repair mechanism that traces downstream failures to upstream root causes, restricts modifications to the affected design scope, and invalidates outdated verification results for incremental revalidation and design closure.
+\item \textbf{End-to-end evaluation.} Across diverse LLM workloads, hardware configurations, and LLM backbones, ACCORD 
+\end{itemize}
+
+
+\begin{figure*}[t!]
+    \centering
+    \includegraphics[width=1\linewidth]{pictures/ACCORD_Workflow.pdf}
+    \caption{Overview of the ACCORD framework. A top-level controller coordinates specialized agents across an eight-stage FPGA spatial accelerator design workflow, anchored by a persistent shared design state $S_t=(G_t, A_t, R_t)$.}
+    \label{fig:workflow}
+\end{figure*}
+\looseness=-1
+\section{Background \& Motivation}
+
+\subsection{FPGA Spatial Accelerators for LLMs}
+\looseness=-1
+FPGA spatial accelerators execute LLM workloads by mapping compute engines, buffers, and memory controllers into a deeply pipelined streaming graph~\cite{streamtensor,allo,streamhls}. Tensors stream directly between spatially co-existing nodes via on-chip FIFOs, minimizing off-chip DRAM traffic. However, implementing such accelerators is challenging because spatial nodes are tightly coupled across structural/protocol alignment, throughput/buffering balance, and global resource and timing constraints. While compiler frameworks (e.g., Allo~\cite{allo}, StreamHLS~\cite{streamhls}, and StreamTensor~\cite{streamtensor}) manage these couplings via structured IRs, their design space is restricted to predefined, static compiler passes and rules.
+
+\subsection{Agentic Hardware Design Automation}
+\looseness=-1
+LLM-based agents automate hardware design through iterative code generation, tool execution, and feedback-driven refinement, spanning module-level RTL generation~\cite{mage,rtlfixer}, verification~\cite{assertllm,correctbench}, HLS optimization~\cite{hlspilot}, and multi-agent workflows~\cite{mahl,gpt4aigchip,designconductor2,rtlsquad}. Despite their generative flexibility, existing agents lack explicit, structured design state management. They treat multi-stage development as loosely coupled conversational tasks, relying on unstructured context histories that easily break system-wide invariants across design stages.
+
+\subsection{Motivation and Challenges}
+\looseness=-1
+Unlike isolated RTL generation, end-to-end FPGA spatial accelerator design requires architectural decisions to remain consistent with downstream implementations and verification results. When agents rely on unstructured interaction histories to track these dependencies~\cite{lostmiddle,longbench,locomo}, two key challenges arise, as illustrated in Fig.~\ref{fig:motivation}:
+
+\looseness=-1
+\textbf{Challenge 1: Preserving cross-stage design consistency.}
+As shown in Fig.~\ref{fig:motivation} (top), architectural decisions must propagate consistently across dependent design stages, including after upstream revisions. During \emph{forward design} (Case A), a data-width constraint may be lost during RTL generation, producing locally valid modules that fail system integration. During \emph{backward refinement} (Case B), revising an upstream buffer-size parameter requires synchronized updates to dependent RTL modules and verification configurations. Without explicit dependency tracking, agents may update only a subset of the affected artifacts, leaving others with outdated parameters. Consequently, individually valid design artifacts may form an inconsistent overall design.
+
+\looseness=-1
+\textbf{Challenge 2: Tracing downstream failures to cross-stage root causes.}
+As shown in Fig.~\ref{fig:motivation} (bottom), failures detected during verification or physical implementation may originate from incorrect architectural decisions made several stages earlier. For example, an overly aggressive unroll factor may cause downstream FIFO deadlocks or timing violations. Without cross-stage dependency tracing, agents may repeatedly patch the reported failing modules rather than address the upstream root cause~\cite{swesearch}, leading to prolonged, ineffective repair cycles. Worse, such local edits can introduce more new inconsistencies and invalidate previously obtained verification results, triggering additional rework and revalidation that further delay design closure.
+
+\looseness=-1
+\textbf{Design Implications.}
+Addressing these challenges requires forward design and backward repair to operate on a shared design state with explicit cross-stage dependencies. Specifically, three capabilities are essential:
+
+(1) \emph{Cross-stage constraint and dependency tracking} to enforce design consistency and propagate design changes to affected artifacts;
+
+(2) \emph{Dependency-guided root-cause tracing and targeted repair} to identify upstream causes of downstream failures and restrict modifications to the affected design scope; and
+
+(3) \emph{Versioned verification results and incremental revalidation} to invalidate outdated results after design revisions and selectively rerun affected checks.
+These requirements motivate ACCORD's dependency-aware design state management.
+
+
+\begin{figure*}[t!]
+    \centering
+    \includegraphics[width=1\linewidth]{pictures/ACCORD_DCG_CrossStage.pdf}
+    \caption{DDG structure and dependency-driven design updates in ACCORD: (a) cross-stage dependencies among design decisions, artifacts, and verification results; (b) forward propagation of design changes and incremental revalidation; and (c) dependency-guided root-cause tracing and targeted repair.}
+    \label{fig:DDG}
+\end{figure*}
+\section{Method}
+
+\subsection{Workflow Overview and Design State Model}
+\looseness=-1
+Fig.~\ref{fig:workflow} presents the overall workflow of ACCORD. Given a user request specifying the target LLM, FPGA platform, and design goals, ACCORD first performs \emph{input preparation} by parsing the request and retrieving the required model configurations, source code~\cite{transformers}, model weights~\cite{huggingface}, and hardware documentation. After checking the completeness and validity of the collected specifications, a top-level controller coordinates specialized agents across eight design stages:
+\emph{(1)~Requirements Specification} and \emph{(2)~Constraint Modeling} establish model dimensions, numerical policies, and platform resource and timing constraints;
+\emph{(3)~Template/IP Binding}, \emph{(4)~Spatial Architecture Design}, and \emph{(5)~Design Space Exploration (DSE)} map LLM operators to hardware templates, construct spatial pipelines, and explore parallelism and buffering configurations;
+finally, \emph{(6)~RTL Generation}, \emph{(7)~Verification \& Repair}, and \emph{(8)~Physical Implementation} generate Chisel-based RTL, perform functional verification, and invoke synthesis and place-and-route to evaluate resource utilization and timing. Verification and implementation failures trigger revisions to the affected design stages.
+
+\looseness=-1
+To maintain consistency across these stages, ACCORD coordinates agent activities through a shared design state rather than unstructured interaction histories. At iteration $t$, the design state is defined as:
+\begin{equation}
+S_t = (G_t, A_t, R_t),
+\end{equation}
+where $G_t$ is a persistent \emph{Design Dependency Graph (DDG)} recording cross-stage design constraints and dependencies, $A_t$ contains generated design artifacts (e.g., specifications, DSE configurations, and RTL sources), and $R_t$ stores verification and EDA results associated with specific artifact revisions. Each agent proposes updates to $S_t$, which are committed only after the applicable design constraints and required stage-specific checks are satisfied. Failed checks are recorded for subsequent diagnosis, while results associated with modified artifacts are invalidated until revalidated. By explicitly maintaining these dependencies and verification results throughout the lengthy workflow, ACCORD coordinates both forward design and backward refinement without relying on conversational context to preserve design consistency.
+
+\subsection{DDG-Based Cross-Stage Consistency}
+\looseness=-1
+\textbf{Graph structure and linkages.}
+To address cross-stage inconsistencies arising during design generation and subsequent revisions (Challenge~1), ACCORD uses the DDG to explicitly track dependencies among design decisions, generated artifacts, and verification results. As illustrated in Fig.~\ref{fig:DDG}(a), the graph connects three categories of entities: \emph{design decision nodes}, \emph{generated artifacts} ($A_t$), and \emph{verification results} ($R_t$). Design decision nodes represent model specifications, quantization policies, DSE parameters, pipeline configurations, memory buffering plans, and streaming interface constraints. Directed edges encode two types of relationships:
+1)~\emph{constraint and artifact dependencies} (solid arrows), which capture how upstream decisions constrain downstream parameters and generated artifacts; and
+2)~\emph{invalidation and recheck links} (dashed arrows), which associate design artifacts and constraints with their corresponding static, simulation, and physical implementation checks. These dependencies determine both which artifacts require updates and which verification results must be invalidated following a design change.
+
+\looseness=-1
+\textbf{Forward constraint propagation.}
+During forward design, ACCORD propagates architectural constraints, including tensor dimensions, data-packing formats, and producer--consumer rates, along the DDG to dependent stages. Before accepting an agent's output, automated constraint checkers verify that its parameters and interfaces satisfy the global applicable constraints in $G_t$. For example, an RTL interface width must agree with the data-width decision established during architecture planning (Fig.~\ref{fig:motivation}, Case~A). Inconsistent outputs are rejected at the originating stage, preventing locally valid but incompatible modules from entering the integrated design.
+
+\looseness=-1
+\textbf{Dependency-driven design updates.}
+When an upstream design decision changes, ACCORD uses the DDG to quickly identify and update all affected downstream artifacts, rather than modifying individual stages independently. Fig.~\ref{fig:DDG}(b) illustrates this process using a revision of the cross-token reuse parameter. The update proceeds in four steps:
+\emph{(1)~Design change:} the controller records the revised parameter at its source node;
+\emph{(2)~DDG propagation:} ACCORD traverses the outgoing dependency edges to identify the affected subgraph, including dependent design decisions, constraints, artifacts, and associated checks;
+\emph{(3)~Artifact update:} agents regenerate or modify the affected configurations and RTL modules according to the revised parameters; and
+\emph{(4)~Incremental revalidation:} ACCORD invalidates verification results associated with the modified artifacts and reruns the affected checks, storing the updated results in $R_t$.
+Unrelated artifacts and their valid verification results are preserved, avoiding unnecessary regeneration and verification.
+
+\subsection{Spatial Architecture Generation and DSE}
+\looseness=-1
+ACCORD combines flexible LLM-driven architecture generation with the design constraints maintained in the DDG. During Stages~3--6 of Fig.~\ref{fig:workflow}, specialized agents construct the accelerator through template binding, spatial pipeline assembly, and design space exploration. Agents first map LLM operators to an extensible library of parameterized hardware templates and vendor IP. Unlike compiler frameworks restricted to predefined transformations, ACCORD allows agents to adaptively modify or extend template micro-architectures to support custom numerical formats and operator fusions, subject to the constraints recorded in $G_t$. The selected compute engines are then connected through streaming FIFOs to form a spatial pipeline, with explicit configurations for memory banking, buffering, and data transfers.
+
+\looseness=-1
+ACCORD subsequently explores compute parallelism, PE array dimensions, FIFO depths, and buffer sizes under FPGA resource, bandwidth, and timing constraints. Each design parameter is linked to its corresponding architectural node in the DDG, allowing configuration changes to propagate to dependent implementations. Analytical performance and resource models eliminate infeasible configurations, while synthesis and place-and-route feedback guide further exploration when resource or timing constraints are violated. Once a configuration is selected, agents generate the corresponding Chisel RTL and integrate the accelerator with FPGA memory and control interfaces. Any subsequent architectural revisions follow the dependency-driven update procedure described in Section~III-B.
+
+\subsection{Dependency-Guided Failure Tracing, Repair, and Closure}
+\looseness=-1
+\textbf{Multi-level verification and physical implementation.}
+ACCORD verifies the generated accelerator at three levels: \emph{operator-level} verification checks numerical correctness and handshake behavior; \emph{block-level} verification checks inter-node data transfers and FIFO behavior; and \emph{board-level} verification checks system integration with FPGA memory and runtime interfaces. Synthesis and place-and-route subsequently evaluate resource utilization and timing slack. All simulation traces and EDA reports are stored in $R_t$ and associated with the corresponding design revisions. These results provide the information required to diagnose failures and determine which checks must be repeated after design modifications.
+
+\looseness=-1
+\textbf{Root-cause tracing and targeted repair.}
+To address failures originating from earlier architectural decisions (Challenge~2), ACCORD uses DDG dependencies to trace downstream errors back to their potential upstream causes, rather than repeatedly modifying the reported failing modules. As illustrated in Fig.~\ref{fig:DDG}(c), the repair process consists of four steps:
+\begin{enumerate}
+\item \emph{Failure capture:} ACCORD extracts the failure signature, the failing module and affected design stage, and relevant diagnostic information from the verification or EDA report in $R_t$, such as a simulation deadlock or critical-path timing violation.
+\item \emph{DDG-based root-cause tracing:} Starting from the failing check, ACCORD traverses the relevant dependencies backward through $G_t$ across multiple preceding design stages and correlates the implicated design decisions with the tool report to identify upstream root causes. For example, a timing violation reported during physical implementation may originate from excessive parallelism selected during DSE. The identified dependencies also determine the affected design scope.
+\item \emph{Targeted repair:} The repair agent modifies only the authorized design parameters and artifacts, with the controller enforcing write-scope restrictions. Depending on the identified cause, repair may involve local RTL revisions to upstream architectural and DSE parameters. Unrelated modules and interfaces are preserved to avoid introducing additional inconsistencies.
+\item \emph{Incremental revalidation:} ACCORD invalidates verification results affected by the accepted modifications and reruns the relevant constraint checks and verification or EDA tools. Updated results are recorded in $R_t$ to confirm that the failure has been resolved without introducing regressions.
+\end{enumerate}
+
+\looseness=-1
+\textbf{Design closure.}
+ACCORD retains the best validated design candidate across iterations. Design closure is reached only when all required design constraints are satisfied and the functional verification and physical implementation results remain valid for the current artifact revisions. The resulting deliverables include the generated RTL, implementation configurations, and verification and EDA reports for a functionally verified, timing-closed FPGA spatial accelerator.
+
+
+\section{Evaluation}
+\subsection{Experimental Setup}
+\looseness=-1
+\textbf{Workloads and Hardware Platform.}
+We evaluate ACCORD on four LLMs: GPT-2 Medium~\cite{gpt2},
+Qwen2-0.5B~\cite{qwen2}, Gemma 3 1B~\cite{gemma3},
+and TinyLlama-1.1B~\cite{tinyllama}. Their architectural
+configurations are summarized in Table~\ref{tab:target_models}.
+All ACCORD experiments use W4A8 quantization, a sequence
+length of 32, and a timing target of 150 MHz. We target
+an AMD Virtex UltraScale+ XCVU9P FPGA~\cite{amd_virtex}
+with external DDR memory. The generated accelerators
+undergo functional verification and FPGA implementation.
+We report resource utilization and timing after place-and-route,
+together with latency measured on the FPGA board.
+
+\looseness=-1
+\textbf{LLM Backbones, Toolchain, and Baselines.}
+We evaluate ACCORD using three upstream LLMs: two
+open-source models, GLM-5.3~\cite{glm5.3} and DeepSeek-V4-Pro~\cite{deepseekv4pro}, and
+one proprietary model, GPT-6.1 Sol~\cite{gpt6.1sol}. All three use the
+same FPGA, W4A8 precision, and 150-MHz timing target.
+ACCORD employs Chisel~\cite{chisel} for RTL generation, Synopsys VCS~\cite{vcs}
+for functional verification, and Vivado ~\cite{vivado} for synthesis
+,place-and-route and bitstream generation. We compare ACCORD with two FPGA
+spatial compiler frameworks, Allo~\cite{allo} and
+StreamTensor~\cite{streamtensor}. Their results are taken
+directly from the original papers, with unavailable
+resource data marked as NR (not reported). Since the
+baselines use different FPGA platforms, the comparison
+is not a controlled same-device evaluation.
+
+
+
+\begin{table}[t]
+\centering
+\caption{Architectural Configurations of Target LLMs.}
+\label{tab:target_models}
+\footnotesize
+\renewcommand{\arraystretch}{0.80}
+\setlength{\aboverulesep}{0.25ex}
+\setlength{\belowrulesep}{0.25ex}
+\setlength{\tabcolsep}{2pt}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lcccc@{}}
+\toprule
+& \textbf{GPT-2~\cite{gpt2}}
+& \textbf{Qwen2~\cite{qwen2}}
+& \textbf{TinyLlama~\cite{tinyllama}}
+& \textbf{Gemma 3~\cite{gemma3}} \\
+\midrule
+\textbf{Layers}     & 24   & 24   & 22   & 26   \\
+\midrule
+\textbf{Hidden Size}& 1024 & 896  & 2048 & 1152 \\
+\midrule
+\textbf{FFN Dim}    & 4096 & 4864 & 5632 & 6912 \\
+\midrule
+\textbf{Q Heads}    & 16   & 14   & 32   & 4    \\
+\midrule
+\textbf{KV Heads}   & 16   & 2    & 4    & 1    \\
+\midrule
+\textbf{Activation} & GELU & SiLU & SiLU & GELU \\
+\bottomrule
+\end{tabular*}
+\vspace{-6pt}
+\end{table}
+
+
+\begin{table*}[t]
+\centering
+\caption{End-to-End Accelerator Performance Across Compiler Baselines, Target LLM Workloads, and Upstream LLM Backbones.}
+\label{tab:e2e_main}
+
+% Data font size
+\fontsize{6.3}{7.7}\selectfont
+
+% Header font size: 7pt
+\newcommand{\tablehead}[1]{{\fontsize{7}{8.5}\selectfont\bfseries #1}}
+
+\renewcommand{\arraystretch}{1.50}
+\setlength{\tabcolsep}{1.7pt}
+\setlength{\arrayrulewidth}{0.30pt}
+
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}>{\centering\arraybackslash}p{2.85cm}|l|l|c|c|c|c|c|c|c@{}}
+\noalign{\hrule height 0.8pt}
+\tablehead{Evaluation Group} &
+\tablehead{Framework/Agent} &
+\tablehead{Target Workload} &
+\tablehead{Prec.} &
+\tablehead{$F_{\max}$ (MHz)} &
+\tablehead{LUT/FF (K)} &
+\tablehead{DSP} &
+\tablehead{BRAM/URAM} &
+\tablehead{Thput (tok/s)} &
+\tablehead{Latency (ms)} \\
+\noalign{\hrule height 0.8pt}
+
+\multirow[c]{3}{2.85cm}{\centering
+\fontsize{7}{8.5}\selectfont
+\textbf{(1) Comparison with}\\
+\textbf{Spatial Compilers}}
+
+ & Allo~\cite{allo} (Alveo U280)
+ & GPT-2 Medium & W4A8
+ & 250.00 & 508 / 652 & 1,780
+ & 384 / --
+ & 204.05\,{\tiny(1.00$\times$)}
+ & 238.32\,{\tiny(1.00$\times$)} \\
+\cline{2-10}
+
+ & StreamTensor~\cite{streamtensor} (Alveo U55C)
+ & GPT-2 Medium & W4A8
+ & 250.00 & NR & NR
+ & NR
+ & 199.51\,{\tiny(0.98$\times$)}
+ & 194.99\,{\tiny(0.82$\times$)} \\
+\cline{2-10}
+
+ & \textbf{ACCORD (Ours)} (UltraScale+ VU9P)
+ & GPT-2 Medium & W4A8
+ & 155.45 & 634.9 / 197.3 & 4,232
+ & 180 / 208
+ & \textbf{332.30}\,{\tiny\bfseries(1.63$\times$)}
+ & \textbf{96.30}\,{\tiny\bfseries(0.40$\times$)} \\
+\noalign{\hrule height 0.8pt}
+
+\multirow[c]{4}{2.85cm}{\centering
+\fontsize{7}{8.5}\selectfont
+\textbf{(2) Cross-Workload}\\
+\textbf{Generalization}}
+ & ACCORD (GPT-6.1 Sol)
+ & GPT-2 Medium & W4A8
+ & 155.45 & 634.9 / 197.3 & 4,232
+ & 180 / 208 & 332.30 & 96.30 \\
+\cline{2-10}
+ & ACCORD (GPT-6.1 Sol)
+ & Qwen2-0.5B & W4A8
+ & 160.62 & 671.2 / 220.0 & 5,076
+ & 370 / 214 & 478.16 & 66.92 \\
+\cline{2-10}
+ & ACCORD (GPT-6.1 Sol)
+ & Gemma 3 1B & W4A8
+ & 150.17 & 926.3 / 198.6 & 4,112
+ & 425 / 413 & 237.55 & 134.71 \\
+\cline{2-10}
+ & ACCORD (GPT-6.1 Sol)
+ & TinyLlama-1.1B & W4A8
+ & 155.81 & 517.4 / 186.2 & 4,046
+ & 394 / 150 & 125.83 & 254.32 \\
+\noalign{\hrule height 0.8pt}
+
+\multirow[c]{3}{2.85cm}{\centering
+\fontsize{7}{8.5}\selectfont
+\textbf{(3) Cross-LLM Backbone}\\
+\textbf{Generalization}}
+ & ACCORD (GLM-5.3)
+ & GPT-2 Medium & W4A8
+ & 155.45 & 563.6 / 157.4 & 3,464
+ & 176 / 208 & 441.03 & 72.56 \\
+\cline{2-10}
+ & ACCORD (DeepSeek-V4-Pro)
+ & GPT-2 Medium & W4A8
+ & 152.74 & 614.3 / 177.4 & 3,074
+ & 180 / 208 & 326.52 & 98.00 \\
+\cline{2-10}
+ & ACCORD (GPT-6.1 Sol)
+ & GPT-2 Medium & W4A8
+ & 155.45 & 634.9 / 197.3 & 4,232
+ & 180 / 208 & 332.30 & 96.30 \\
+\noalign{\hrule height 0.8pt}
+\end{tabular*}
+\vspace{-5pt}
+\end{table*}
+
+
+\subsection{End-to-End Design Capability and Hardware Quality}
+\looseness=-1
+\textbf{Across target workloads.}
+Table~\ref{tab:e2e_main} reports accelerator designs for four Transformer workloads. With GPT-6.1 Sol as the upstream LLM, all four designs pass numerical and functional verification and meet the 150-MHz timing constraint after place-and-route, reaching 150.17--160.62~MHz. Their measured 32-token latencies range from 66.92 to 254.32~ms. These results demonstrate that ACCORD can generate working FPGA accelerators across different model dimensions and attention structures without changing the overall design workflow.
+
+\looseness=-1
+\textbf{Comparison with spatial compilers.}
+For GPT-2 Medium under W4A8, ACCORD reaches 332.30~tok/s and 96.30~ms, compared with 204.05~tok/s and 238.32~ms for Allo, and 199.51~tok/s and 194.99~ms for StreamTensor. Thus, ACCORD achieves \textbf{1.63$\times$} and \textbf{1.67$\times$} higher throughput, while reducing latency by \textbf{59.6\%} and \textbf{50.6\%}, respectively. These results show that ACCORD's flexible agent-driven design flow can deliver FPGA spatial accelerators with strong performance relative to established spatial dataflow compilers.
+
+\looseness=-1
+\textbf{Across upstream LLM backbones.}
+We further fix GPT-2 Medium as the target workload and vary the upstream LLM. GLM-5.3, DeepSeek-V4-Pro, and GPT-6.1 Sol all generate functionally correct, timing-closed accelerators under the same constraints. The best-performing design, generated with GLM-5.3, reaches 441.03~tok/s and 72.56~ms, while DeepSeek-V4-Pro produces the design with the fewest DSPs (3,074). This demonstrates that ACCORD can work with different upstream LLMs and explore distinct hardware configurations while satisfying the same functional and physical requirements.
+
+\subsection{Effectiveness of Cross-Stage Consistency Management}
+\looseness=-1
+\textbf{Identifying files affected by design changes.}
+When an architectural parameter changes, ACCORD must
+identify which RTL files may also need to be updated
+or checked. To evaluate this capability (Challenge~1),
+we examine ten recorded parameter changes in a design
+containing 47 RTL files. We compare three methods:
+(1) selecting files from a predefined list associated
+with each parameter, (2) following module-instantiation
+dependencies upward for two levels, and (3) following
+these dependencies through the entire module hierarchy.
+For each change, we compare the predicted files with
+those that actually changed in the recorded revision.
+
+As shown in Table~\ref{tab:propbench_new}, checking
+the entire module hierarchy identifies 85.3\% of
+changed files on average, compared with 72.9\% for
+the predefined file list. It also reduces the total
+number of missed changed-file instances from 36 to 20.
+However, the fraction of selected files increases
+from 33.2\% to 56.2\%, including more files whose
+contents remain unchanged (172 versus 80).
+These results show that tracking more dependencies
+reduces the risk of missing affected files, but also
+increases the number of files selected for checking.
+This experiment evaluates file selection based on
+recorded changes, rather than the functional
+correctness of regenerated RTL.
+
+
+\begin{table}[t]
+\centering
+\caption{Affected-File Prediction under Architectural Parameter Revisions (10 Revisions, 47 RTL Files).}
+\label{tab:propbench_new}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.10}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lcccc@{}}
+\toprule
+\textbf{Traversal} & \textbf{Recall} & \textbf{Scope} & \textbf{Missed} & \textbf{Extra} \\
+\midrule
+Predefined file list & 72.9\% & 33.2\% & 36 & 80 \\
+Two parent levels & 81.7\% & 53.4\% & 25 & 164 \\
+All parent levels & \textbf{85.3\%} & 56.2\% & \textbf{20} & 172 \\
+\bottomrule
+\end{tabular*}
+\vspace{1pt}
+{\raggedright\scriptsize Recall: macro-average changed-file recall; Scope: mean predicted affected-file fraction; Missed/Extra: sums of changed-file misses / unchanged-file predictions over the ten revisions.\par}
+\vspace{-5pt}
+\end{table}
+
+
+\subsection{Effectiveness of Dependency-Guided Repair}
+\looseness=-1
+\textbf{Repairing errors without breaking other modules.}
+We inject ten port-connection errors into a GPT-2
+Medium RTL design and compare ACCORD with a
+conventional repair agent (\texttt{B0}) without
+cross-stage dependency tracking. Both use GPT-6.1 Sol,
+receive the same verification diagnostics and relevant
+RTL code, and are allowed at most two responses per
+error. ACCORD additionally uses DDG dependencies to
+identify the affected modules and restricts modifications
+to the permitted repair scope.
+
+Fig.~\ref{fig:repair_outcomes} compares functional
+verification success and the consistency of the repaired
+designs. Both methods pass functional verification
+in 8/10 cases. However, only 2/10 of \texttt{B0}'s
+repairs preserve the required module interfaces,
+compared with 8/10 for ACCORD. In six cases,
+\texttt{B0} modifies modules outside the intended
+repair scope, while ACCORD preserves these modules.
+Consequently, ACCORD improves the
+\emph{Design-Consistent Repair Rate} from 20\%
+to 80\%, achieving a \textbf{4.0$\times$ improvement}.
+This demonstrates that local functional verification success does not necessarily guarantee global design consistency.
+
+
+\looseness=-1
+\textbf{Repair verification.}
+All eight successful ACCORD repairs pass functional
+verification and satisfy the required module interface
+constraints and modification rules before being accepted
+into the updated design state. By combining dependency
+tracking with controlled modifications, ACCORD avoids
+unnecessary changes to unrelated modules and maintains
+design consistency throughout the repair process.
+
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.8\columnwidth]{pictures/repair_outcomes_editable_text.pdf}
+\caption{Repair results for ten injected RTL interface
+errors per method. A design-consistent repair must
+pass functional verification and preserve the required
+module interfaces. Lower is better for out-of-scope edits.}
+\label{fig:repair_outcomes}
+\vspace{-5pt}
+\end{figure}
+
+\subsection{Incremental Revalidation and Mechanism Analysis}
+\looseness=-1
+\textbf{Tracking valid verification results.}
+When a design file changes, previously obtained
+verification results may no longer be valid.
+ACCORD therefore tracks which results must be
+updated after each modification. We test this
+mechanism using four controlled changes involving
+RTL behavior, timing constraints, model parameters,
+and documentation. In all four cases, ACCORD
+correctly identifies which previous verification
+results must be invalidated and which can be retained.
+These tests confirm the expected behavior for the
+four evaluated changes.
+
+\looseness=-1
+\textbf{Reducing verification time.}
+We evaluate whether ACCORD can reduce repeated
+verification work by checking only the components
+affected by a design modification. Fig.~\ref{fig:revalidation_times}
+compares targeted revalidation against running the
+full set of checks for six types of design changes.
+For documentation and metadata changes (E1--E3),
+targeted checks require only 0.024--0.028~s,
+compared with 29.44--29.65~s for the full checks.
+For local RTL changes (E4 and E6), ACCORD reduces
+the checking time from approximately 29.3~s to
+13.18~s, saving about 55\%. Both approaches
+successfully detect the injected interface error
+in E5. These results demonstrate that selecting
+checks based on design dependencies can substantially
+reduce unnecessary verification work while retaining
+the required checks for the evaluated changes.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.8\columnwidth]{pictures/revalidation_times_editable_text.pdf}
+\caption{Revalidation time for six types of design
+changes. Targeted revalidation executes only the
+selected checks, while the full suite executes all
+checks. Both approaches detect the injected error in E5.}
+\label{fig:revalidation_times}
+\vspace{-5pt}
+\end{figure}
+
+
+
+\vspace{12pt}
+\clearpage
+\bibliographystyle{IEEEtran} 
+\bibliography{references} 
+\end{document}

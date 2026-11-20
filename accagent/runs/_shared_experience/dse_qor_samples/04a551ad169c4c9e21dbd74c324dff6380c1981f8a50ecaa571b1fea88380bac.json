@@ -1,0 +1,264 @@
+{
+  "board": {
+    "fpga_part": "xcvu9p_CIV-flgb2104-2-i",
+    "resource_budget": {
+      "bram": 2160,
+      "bram18": 4320,
+      "bram36": 2160,
+      "dsp": 6840,
+      "ff": 2364480,
+      "lut": 1182240,
+      "uram": 960
+    },
+    "resource_budget_source": "real_vivado_target_part_probe",
+    "source_evidence": [
+      {
+        "chunk_id": "board:000004",
+        "source": "accagent/framework/input_materials/board/vu9p_fpga_\u6837\u4f8b\u5de5\u7a0b.md",
+        "value": "xcvu9p_CIV-flgb2104-2-i"
+      }
+    ]
+  },
+  "clock_frequency_mhz": 157.43073047858942,
+  "cost_features": {
+    "family": "llama",
+    "memory_implementation": [
+      "xpm_uram",
+      "xpm_bram",
+      "xpm_uram"
+    ],
+    "parameters": {
+      "activation_banks": 4,
+      "activation_memory": "xpm_bram",
+      "burst_beats": 1,
+      "clock_target_m_hz": 250,
+      "clock_target_mhz": 250,
+      "compute_array_cols": 16,
+      "compute_array_rows": 16,
+      "compute_backend": "vivado_fp_ip",
+      "design_id": "llama",
+      "elem_bits": 16,
+      "fifo_depth": 128,
+      "fifo_memory": "xpm_bram",
+      "head_dim": 64,
+      "hidden_size": 2048,
+      "input_bits": 32,
+      "intermediate_size": 5632,
+      "lanes": 16,
+      "large_cache_memory": "xpm_uram",
+      "max_seq_len": 16,
+      "model_type": "llama",
+      "num_kv_heads": 4,
+      "num_q_heads": 32,
+      "output_bits": 32,
+      "pipeline_depth": 1,
+      "target_max_seq_len": 16,
+      "weight_banks": 1,
+      "weight_banks_by_role": {
+        "weight": 1,
+        "weight_attn_out": 1,
+        "weight_mlp_down": 1,
+        "weight_mlp_gate": 1,
+        "weight_mlp_up": 1,
+        "weight_qkv": 1
+      },
+      "weight_memory": "xpm_uram"
+    },
+    "part": "xcvu9p_CIV-flgb2104-2-i",
+    "precision_bits": 16,
+    "proxies": {
+      "bram18": 450,
+      "bram36": 19666,
+      "clock_frequency_mhz": 1.0,
+      "cycles": 1342815232.0,
+      "dsp": 1280,
+      "ff": 97280,
+      "lut": 2656,
+      "uram": 2402
+    },
+    "workload": {
+      "batch_size": 1,
+      "hidden_size": 2048,
+      "intermediate_size": 5632,
+      "lanes": 16,
+      "model_layers": 22,
+      "processed_tokens": 16,
+      "runtime_sequence": [
+        "load input_tokens",
+        "load layer 0 weights into weight_buffer_a",
+        "start accelerator",
+        "prefetch next layer weights into inactive weight buffer while active layer computes",
+        "poll runtime_status or done",
+        "read output_tokens"
+      ],
+      "sequence_length": 16,
+      "weight_transfer_rules": [
+        "all addresses are byte offsets from the accelerator DDR window base",
+        "all transfer byte counts are aligned to axi_data_width_bits",
+        "weight_buffer_a and weight_buffer_b alternate by layer to allow prefetch of layer N+1 while layer N computes"
+      ]
+    }
+  },
+  "design_parameters_source": {
+    "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedDesignParams.scala": "package spatialaccagent.generated\n\nimport spatialaccagent.templates._\n\nobject GeneratedDesignParams {\n  val designId: String = \"llama\"\n  val modelType: String = \"llama\"\n  val targetMaxSeqLen: Int = 16\n  val clockTargetMHz: Int = 250\n  val inputBits: Int = 32\n  val elemBits: Int = 16\n  val outputBits: Int = 32\n  val lanes: Int = 16\n  val computeArrayRows: Int = 16\n  val computeArrayCols: Int = 16\n  val computeBackend: String = \"vivado_fp_ip\"\n  val weightMemory: String = \"xpm_uram\"\n  val activationMemory: String = \"xpm_bram\"\n  val fifoMemory: String = \"xpm_bram\"\n  val largeCacheMemory: String = \"xpm_uram\"\n  val fifoDepth: Int = 128\n  val weightBanks: Int = 1\n  val activationBanks: Int = 4\n  val weightBanksByRole: Map[String, Int] = Map(\"weight\" -> 1, \"weight_attn_out\" -> 1, \"weight_mlp_down\" -> 1, \"weight_mlp_gate\" -> 1, \"weight_mlp_up\" -> 1, \"weight_qkv\" -> 1)\n  val burstBeats: Int = 1\n  val pipelineDepth: Int = 1\n  val operatorSequence: Seq[String] = Seq(\"rms_norm_1\", \"self_attention\", \"residual_add_1\", \"rms_norm_2\", \"mlp_gate_proj\", \"mlp_up_proj\", \"activation_mul\", \"mlp_down_proj\", \"residual_add_2\")\n  val stageIds: Seq[String] = Seq(\"stage_00_rms_norm_1\", \"stage_01_self_attention\", \"stage_02_residual_add_1\", \"stage_03_rms_norm_2\", \"stage_04_mlp_gate_proj\", \"stage_05_mlp_up_proj\", \"stage_06_activation_mul\", \"stage_07_mlp_down_proj\", \"stage_08_residual_add_2\")\n  val params = LlamaStyleBlockParams(batchSize = 16, computeArrayCols = 16, computeArrayRows = 16, elemBits = 16, headDim = 64, hiddenSize = 2048, inputBits = 32, intermediateSize = 5632, kvHeads = 4, lanes = 16, maxSeqLen = 16, outputBits = 32, qHeads = 32)\n}\n"
+  },
+  "evidence_paths": [
+    "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/formal_20260922_r434_llama/backend_board/case_diagnostics/app_shell_runtime_vivado.json",
+    "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/formal_20260922_r434_llama/app_shell_runtime_bitstream/app_shell_synth_utilization.rpt",
+    "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/formal_20260922_r434_llama/app_shell_runtime_bitstream/app_shell_synth_timing.rpt",
+    "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/formal_20260922_r434_llama/app_shell_runtime_bitstream/app_shell_synth_power.rpt",
+    "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/formal_20260922_r434_llama/backend_board/qor/source_cycle_analysis.json",
+    "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/formal_20260922_r434_llama/backend_board/qor/qor_metrics.json"
+  ],
+  "measurement_scope": "generated_kernel_synthesis",
+  "metric_quality": "post_synthesis_clock_and_analytical_source_cycles",
+  "parameters": {
+    "activation_banks": 4,
+    "activation_memory": "xpm_bram",
+    "burst_beats": 1,
+    "clock_target_m_hz": 250,
+    "clock_target_mhz": 250,
+    "compute_array_cols": 16,
+    "compute_array_rows": 16,
+    "compute_backend": "vivado_fp_ip",
+    "design_id": "llama",
+    "elem_bits": 16,
+    "fifo_depth": 128,
+    "fifo_memory": "xpm_bram",
+    "head_dim": 64,
+    "hidden_size": 2048,
+    "input_bits": 32,
+    "intermediate_size": 5632,
+    "lanes": 16,
+    "large_cache_memory": "xpm_uram",
+    "max_seq_len": 16,
+    "model_type": "llama",
+    "num_kv_heads": 4,
+    "num_q_heads": 32,
+    "output_bits": 32,
+    "pipeline_depth": 1,
+    "target_max_seq_len": 16,
+    "weight_banks": 1,
+    "weight_banks_by_role": {
+      "weight": 1,
+      "weight_attn_out": 1,
+      "weight_mlp_down": 1,
+      "weight_mlp_gate": 1,
+      "weight_mlp_up": 1,
+      "weight_qkv": 1
+    },
+    "weight_memory": "xpm_uram"
+  },
+  "performance_estimation": {
+    "assumptions": [
+      "Use the source set associated with synthesis_source_archive_sha256 07a06d56958b04dc37afe5d4a10646cd13530338e8144b3334204e17e9c6ba8c; the cycle values are an RTL/IP-configuration projection, not measured whole-system results.",
+      "One physical Transformer block is reused sequentially for all 22 model layers. The 16 processed tokens are sequence_length 16 times batch_size 1, not tokens multiplied by layers.",
+      "The run starts with the initial layer weights preloaded. The declared alternating weight buffers and run_sequence permit next-layer prefetch during computation; assume it completes by each layer boundary, so exposed handoff is zero.",
+      "Assume no external backpressure and exclude DDR transfer, polling, and output-read stalls. The nominal schedule uses the steady-state token pacing required by the supplied single-block-reuse formula."
+    ],
+    "counter_source": "source_schedule_analysis",
+    "derivation": "runtime_config.json and GeneratedDesignParams.scala specify hidden_size 2048, lanes 16, 32-bit block-stream elements, sequence length 16, and 22 layers. Thus one complete hidden vector is 2048/16 = 128 StreamBeats, and processed_tokens = 16*1 = 16. GeneratedAxiDdrTop.sv exposes the 512-bit stream and connects its active input handshake to GeneratedAcceleratorTop.sv; LlamaStyleBlock.sv connects RMSNorm, QKVProjection, RoPE, AttentionGQA, residuals, and GatedMLP as ready/valid streams. The IP configuration gives multiplier latency 9, add/subtract latency 12, compare latency 3, and conversion latency 7; the XPM memories use one-cycle reads. Linear.sv's 16x16 array processes each row through a read, multiplier issue, 9-cycle multiply plus four 12-cycle reduction levels, accumulator issue, and 12-cycle accumulation wait: 72 cycles per row. QKVProjection uses 128 input rows and 160 output beats, giving 160*(128*72+2) = 1,474,880 cycles of linear work per token. QKV extraction takes 49 cycles per emitted QKV beat (3 fields*8 lanes*2 issue/capture cycles plus emit). RoPE consumes 8 QKV beats per head and processes 8 output beats with 8 lanes per beat; each lane takes 2+2+2+10+13 cycles for memory/table reads, multiply, and add, and each output beat adds one transfer cycle. Accounting for the head-group overlap gives 70,673 cycles for QKV extraction/RoPE after the QKV linear output. Including the 128-beat RMS-to-QKV transfer yields the steady-state ingress token interval 1,474,880+70,673+128 = 1,545,681 cycles. Run start makes RMSNorm ingress ready with preloaded weights, so the first block input beat is accepted at cycle 0. For the output tail, the first attention row's causal score/softmax/context work is shorter than one QKV token interval, but AttentionGQA's project-wait condition requires the successor token before the first output projection; include that sequence lookahead. The attention output Linear consumes 32 head vectors and computes 128 output beats, for 96 cycles of head read/capture/feed plus 128*(128*72+2) = 1,179,904 cycles. Including first-token QKV availability (1,599,396 cycles) and RMS2 reduction-to-first-output (53,587 cycles) places the first GatedMLP input at 4,378,664 cycles from run start. GatedMLP's gate/up projections run in parallel: each has 352 output beats and 128 input rows, so its token-input interval is 128+352*(128*72+2) = 3,244,864 cycles. SiLU, elementwise multiply, the down projection, and final residual/FIFO drain give a final GatedMLP-to-block-output drain of 6,489,792 cycles; the down projection term is 128*(352*72+2) = 3,244,288 cycles. Applying the required steady-state schedule, the final-token tail is 4,378,664 + 15*(3,244,864-1,545,681) + 6,489,792 = 36,356,201 cycles. This accounts for pipeline fill and drain once, without summing every operator latency per token.",
+    "estimate_scope": "generated_pipeline_schedule",
+    "latency_cycles": 1309911152,
+    "measurement_kind": "analytical_estimate",
+    "model_layers": 22,
+    "performance_model": "single_block_reuse_operator_token_pipeline_v1",
+    "pipeline_schedule": {
+      "exposed_layer_handoff_cycles": 0,
+      "last_token_start_to_completion_cycles": 36356201,
+      "mode": "single_block_reuse",
+      "operator_token_overlap": true,
+      "start_to_first_input_cycles": 0,
+      "steady_state_ii_cycles": 1545681
+    },
+    "processed_tokens": 16,
+    "schedule_policy": {
+      "external_backpressure_cycles": 0,
+      "initial_layer_weights_preloaded": true,
+      "mode": "nominal_no_stall",
+      "model_layer_execution": "sequential_reuse_of_the_same_block",
+      "next_layer_weight_prefetch": "overlapped_with_current_layer_compute",
+      "operator_initiation_interval_source": "synthesized_ip_configuration_and_rtl",
+      "performance_model": "single_block_reuse_operator_token_pipeline_v1",
+      "physical_transformer_blocks": 1
+    },
+    "source_fingerprint": "04a551ad169c4c9e21dbd74c324dff6380c1981f8a50ecaa571b1fea88380bac",
+    "source_refs": [
+      "generated/chisel/runtime/runtime_config.json",
+      "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedDesignParams.scala",
+      "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedAcceleratorTop.scala",
+      "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedAxiDdrTop.scala",
+      "generated/chisel/vivado/GeneratedAcceleratorTop.sv",
+      "generated/chisel/vivado/GeneratedAxiDdrTop.sv",
+      "generated/chisel/vivado/LlamaStyleBlock.sv",
+      "generated/chisel/vivado/Linear.sv",
+      "generated/chisel/vivado/Linear_1.sv",
+      "generated/chisel/vivado/Linear_2.sv",
+      "generated/chisel/vivado/Linear_4.sv",
+      "generated/chisel/vivado/QKVProjection.sv",
+      "generated/chisel/vivado/RoPE.sv",
+      "generated/chisel/vivado/AttentionGQA.sv",
+      "generated/chisel/vivado/VectorNorm.sv",
+      "generated/chisel/vivado/RMSNorm.sv",
+      "generated/chisel/vivado/Softmax.sv",
+      "generated/chisel/vivado/GatedMLP.sv",
+      "generated/chisel/vivado/Activation.sv",
+      "generated/chisel/vivado/ElementwiseMul.sv",
+      "generated/chisel/vivado/ResidualAdd.sv",
+      "generated/chisel/vivado/PhysicalFp32Add.sv",
+      "generated/chisel/vivado/PhysicalFp32Mul.sv",
+      "generated/chisel/vivado/PhysicalFp32Sub.sv",
+      "generated/chisel/vivado/PhysicalFp32CompareLt.sv",
+      "generated/chisel/vivado/PhysicalFp32Div.sv",
+      "generated/chisel/vivado/PhysicalFp32Sqrt.sv",
+      "generated/chisel/vivado/PhysicalFp16ToFp32.sv",
+      "generated/chisel/vivado/PhysicalFp32ToFp16.sv",
+      "generated/chisel/vivado/PhysicalFp32ToSigned.sv",
+      "generated/chisel/vivado/PhysicalSignedToFp32.sv",
+      "generated/chisel/vivado/PhysicalSimpleDualPortMemory.sv",
+      "generated/chisel/vivado/PhysicalStreamFifo.sv",
+      "generated/chisel/vivado/PhysicalStreamFifo_11.sv",
+      "generated/chisel/src/main/scala/spatialaccagent/templates/PhysicalResources.scala",
+      "generated/chisel/scripts/gen_xilinx_fp_ips_23.tcl",
+      "generated/chisel/simulation/fpga_ip_modules.txt"
+    ],
+    "status": "pass",
+    "synthesis_source_archive_sha256": "07a06d56958b04dc37afe5d4a10646cd13530338e8144b3334204e17e9c6ba8c"
+  },
+  "performance_model": "single_block_reuse_operator_token_pipeline_v1",
+  "performance_tokens_per_second": 1.9229485021266775,
+  "resources": {
+    "bram18": 53,
+    "bram36": 19529,
+    "dsp": 5661,
+    "ff": 882932,
+    "lut": 528378,
+    "uram": 0
+  },
+  "schema_version": "spatialaccagent.dse_qor_sample.v1",
+  "source_fingerprint": "04a551ad169c4c9e21dbd74c324dff6380c1981f8a50ecaa571b1fea88380bac",
+  "synthesis_source_archive_sha256": "07a06d56958b04dc37afe5d4a10646cd13530338e8144b3334204e17e9c6ba8c",
+  "timestamp": "2026-10-16T08:16:45.255492Z",
+  "workload": {
+    "batch_size": 1,
+    "hidden_size": 2048,
+    "intermediate_size": 5632,
+    "lanes": 16,
+    "model_layers": 22,
+    "processed_tokens": 16,
+    "runtime_sequence": [
+      "load input_tokens",
+      "load layer 0 weights into weight_buffer_a",
+      "start accelerator",
+      "prefetch next layer weights into inactive weight buffer while active layer computes",
+      "poll runtime_status or done",
+      "read output_tokens"
+    ],
+    "sequence_length": 16,
+    "weight_transfer_rules": [
+      "all addresses are byte offsets from the accelerator DDR window base",
+      "all transfer byte counts are aligned to axi_data_width_bits",
+      "weight_buffer_a and weight_buffer_b alternate by layer to allow prefetch of layer N+1 while layer N computes"
+    ]
+  }
+}

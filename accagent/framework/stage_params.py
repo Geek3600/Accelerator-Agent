@@ -809,6 +809,8 @@ def stage_structural_dimensions(
 def board_axi(state: dict[str, Any]) -> dict[str, Any]:
     memory = constraint_facts(state, "constraint.memory.board")
     memory_system = memory.get("memory_system", {}) if isinstance(memory.get("memory_system"), dict) else memory
+    accelerator_interface = memory_system.get("accelerator_facing_interface", {})
+    accelerator_interface = accelerator_interface if isinstance(accelerator_interface, dict) else {}
     data_width_bits = scalar(memory_system.get("axi_data_width_bits"), 0)
     if not supported_payload_width_bits(data_width_bits):
         raise ValueError(
@@ -827,7 +829,11 @@ def board_axi(state: dict[str, Any]) -> dict[str, Any]:
         "data_bytes": data_bytes,
         "alignment_bytes": data_bytes,
         "addr_width_bits": scalar(memory_system.get("axi_addr_width_bits"), 37),
-        "core_side_interface_name": memory_system.get("core_side_interface_name") or memory_system.get("ddr_channel_prefix"),
+        "core_side_interface_name": (
+            memory_system.get("core_side_interface_name")
+            or memory_system.get("ddr_channel_prefix")
+            or accelerator_interface.get("name")
+        ),
         "ddr_channels": scalar(memory_system.get("ddr_channels"), 1),
         "source": "constraint.memory.board.memory_system",
     }

@@ -1,0 +1,2009 @@
+{
+  "case_adapter": {
+    "case_id": "gpt2_hf_case",
+    "model_family": "gpt2",
+    "source": "built_in_case_adapter",
+    "status": "ready"
+  },
+  "diagnostics": {
+    "case_vcs_functional": null,
+    "case_vcs_functional_applicability": {
+      "current_failed_gates": [
+        "case_board_interface_discovery",
+        "functional_sim"
+      ],
+      "current_layer": "board_axi_ddr_wrapped_system",
+      "executable": false,
+      "reason": "no VCS diagnosis artifact is available",
+      "schema_version": "spatialaccagent.diagnosis_applicability_report.v1",
+      "status": "not_present"
+    },
+    "contract_guided_debug_closure": {
+      "causal_path": {
+        "boundary_order": [
+          "boundary.edge_data_block_input_to_stage_00_layer_norm_1_input",
+          "boundary.edge_data_block_input_to_stage_02_residual_add_1_residual_skip",
+          "boundary.edge_data_stage_00_layer_norm_1_to_stage_01_self_attention_main",
+          "boundary.edge_data_stage_01_self_attention_to_stage_02_residual_add_1_main",
+          "boundary.edge_data_stage_02_residual_add_1_to_stage_03_layer_norm_2_main",
+          "boundary.edge_data_stage_02_residual_add_1_to_stage_07_residual_add_2_residual_skip",
+          "boundary.edge_data_stage_03_layer_norm_2_to_stage_04_mlp_fc_main",
+          "boundary.edge_data_stage_04_mlp_fc_to_stage_05_activation_main",
+          "boundary.edge_data_stage_05_activation_to_stage_06_mlp_proj_main",
+          "boundary.edge_data_stage_06_mlp_proj_to_stage_07_residual_add_2_main",
+          "boundary.edge_data_stage_07_residual_add_2_to_block_output_output"
+        ],
+        "path_id": "default_pipeline_path",
+        "stages": [
+          "block_input",
+          "stage_00_layer_norm_1",
+          "stage_01_self_attention",
+          "stage_02_residual_add_1",
+          "stage_03_layer_norm_2",
+          "stage_04_mlp_fc",
+          "stage_05_activation",
+          "stage_06_mlp_proj",
+          "stage_07_residual_add_2",
+          "block_output"
+        ]
+      },
+      "current_layer_failure_context": {},
+      "failed_boundaries": [],
+      "failing_transaction": {
+        "checker": "real_tool.case_board_interface_discovery",
+        "source": "verification_result",
+        "summary": "returncode=1 report_status=fail blockers=board-interface LLM agent did not return real structured interpretation: board-interface selector status is not ready/pass/selected: blocked; board-interface selector blocker: The progressive Vivado review identifies only vivado:cell:c010e6fe30f3945cadd2cc51 (/u280_shell), and explicitly establishes that it is a board shell rather than a separately evidenced replaceable compute-slot cell.; board-interface selector blocker: No reviewed source has owner_cell_ids proving exclusive ownership of a compute-slot instance boundary; therefore an exact minimal exclusive replacement boundary cannot be nominated without guessing.; board-interface selector blocker: The shell control, clock/reset, gamma, and aggregated HBM interfaces are established, but the compute-slot connectivity and exclusive module/instance boundary remain unproved and require downstream full-source review.; board-interface selector did not choose a Vivado cell object ID; selector relevant_sample_source_ids are empty, unknown, or omit the wrapper; LLM requested unknown source context ID: sample-source:6e9598a5528cfc8e13abac3a4; board-interface LLM required_capabilities is not an array; board-interface LLM status is not ready/pass: blocked; board-interface LLM blocker: board-interface selector status is not ready/pass/selected: blocked"
+      },
+      "failure_record_count": 0,
+      "failure_signature": {
+        "boundary": null,
+        "boundary_id": null,
+        "expected_value": null,
+        "integration_summary": null,
+        "observed_value": null,
+        "status": null,
+        "summary": null
+      },
+      "lower_layer_evidence_challenge": {
+        "reason": "no localized trace record with lower-layer pass evidence is available",
+        "status": "no_lower_layer_challenge"
+      },
+      "minimal_repair_context": {
+        "boundary_contract": {},
+        "current_layer_failure_context": {},
+        "diagnostic_observations": [],
+        "lower_layer_evidence_challenge": {
+          "reason": "no localized trace record with lower-layer pass evidence is available",
+          "status": "no_lower_layer_challenge"
+        },
+        "repair_scope": "verification_capability_repair",
+        "root_candidate_module": null,
+        "trace_record": {},
+        "violated_contract": "verification_semantic_capability_contract"
+      },
+      "policy": {
+        "do_not_patch_output_module_only_because_symptom_is_downstream": true,
+        "do_not_reopen_passed_lower_layer_without_contradicting_boundary_trace": true,
+        "if_status_needs_boundary_trace_rerun_stage7_with_boundary_monitors": true,
+        "lower_layer_pass_evidence_is_reusable_not_absolute": true,
+        "repair_agent_should_use_causal_slice_only": true,
+        "verification_capability_gap_must_be_repaired_before_hardware_trace": true
+      },
+      "recommended_trace_gate": null,
+      "representative_failure_count": 0,
+      "root_candidate_module": null,
+      "schema_version": "spatialaccagent.debug_closure.v0",
+      "status": "verification_capability_gap",
+      "strategy": "contract_guided_boundary_failure_slice",
+      "targeted_replay_plan": {
+        "reason": "repair semantic testbench, loader/weight binding, numeric contract, or checker capability before requesting a hardware boundary trace",
+        "status": "blocked_by_verification_capability_gap"
+      },
+      "violated_contract": "verification_semantic_capability_contract"
+    },
+    "flow_controller_handoff": {
+      "actions": [
+        {
+          "action": {
+            "acceptance_checkers": [
+              "verification_artifact_contract_check",
+              "verification_action_audit_check",
+              "artifact_hash_check",
+              "sacg_memory_check",
+              "stage_retry_request_check",
+              "stage_artifact_trust_barrier_check",
+              "tool_protocol_check"
+            ],
+            "action_type": "retry_contract_reconciliation",
+            "consumes": [
+              "artifact.stage5.verification_artifact_contract",
+              "artifact.stage5.llm_action_audit",
+              "artifact.stage6.verification_result",
+              "artifact.stage6.repair_plan",
+              "artifact.stage6.repair_execution_report",
+              "source SACG state",
+              "current-source hash and manifest evidence"
+            ],
+            "id": "debug_loop.reconcile_stage6_retry_contract",
+            "on_failure": "Keep all six contamination barriers and both retry requests active; do not consume the failed Stage-6 artifacts as validated inputs, do not backtrack hardware stages, and return a bounded current-stage reconciliation failure.",
+            "produces": [
+              "current-stage retry reconciliation record",
+              "trust and provenance audit evidence",
+              "unpromoted current-epoch observation-plan input"
+            ],
+            "rationale": "The authoritative SACG memory has open retry_request.0002 and retry_request.0003 plus active contamination barriers. Reconcile the current retry against the Stage-5 verification contract and action audit before consuming any new Stage-6 result; this is a same-stage refinement, not a hardware backtrack.",
+            "requires_approval": false,
+            "stage": "debug_loop",
+            "tool_roles": [
+              "sacg_validate",
+              "verification_artifact_contract_check",
+              "verification_action_audit",
+              "artifact_hash_check",
+              "sacg_memory_check",
+              "stage_retry_request",
+              "stage_artifact_trust_barrier"
+            ]
+          },
+          "action_sha256": "5dc7830a49d6c3d3bf3a47b9c4584a5a0a51d4ecce5fcdc4c8e440798cd526e0",
+          "id": "debug_loop.reconcile_stage6_retry_contract",
+          "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/debug_loop/retry_requests/248_debug_loop_reconcile_stage6_retry_contract.json",
+          "sha256": "fadc7b47ac999a47995eb93c3cdb7196b63938428b84be9fca1796f9cb8b028b"
+        },
+        {
+          "action": {
+            "acceptance_checkers": [
+              "failure_localization_check",
+              "targeted_replay_check",
+              "case_board_interface_discovery",
+              "required_real_tool_evidence_check",
+              "tool_protocol_check",
+              "human_boundary_check"
+            ],
+            "action_type": "targeted_current_layer_observation",
+            "consumes": [
+              "current-stage retry reconciliation record",
+              "artifact.stage5.verification_artifact_contract",
+              "artifact.stage5.llm_action_audit",
+              "latest Stage-6 board-interface failure report",
+              "current Vivado object and connectivity evidence",
+              "current user-supplied sample-project source catalog"
+            ],
+            "id": "debug_loop.observe_board_interface_current_epoch",
+            "on_failure": "Do not authorize RTL, wrapper, checker, or target-selection edits. Keep the current layer blocked and produce a bounded replan identifying the missing exact evidence or schema defect; never guess a board target or backtrack hardware stages.",
+            "produces": [
+              "verification/debug_closure/current_epoch_board_interface_observation.json",
+              "current exact-board discovery context record",
+              "failure-localization evidence for the board integration boundary"
+            ],
+            "rationale": "The previous replay did not isolate the current failure and used an empty stage_id. Perform a non-identical current-epoch observation focused on exact sample-project source context and the host/output-path control boundary. This distinguishes missing catalog context, absent exclusive compute-slot ownership, and malformed selector output without guessing a target or editing hardware.",
+            "requires_approval": false,
+            "stage": "debug_loop",
+            "targeted_replay_plan": {
+              "distinguishes": "The observation must report which exact artifact or boundary supports each alternative and must not substitute the shell cell for a compute slot. It is a new effective trace environment and a new current-stage identity, not a replay of the prior empty-stage-id boundary.",
+              "rerun_env": {
+                "SPATIALACC_BOUNDARY_TRACE": "1",
+                "SPATIALACC_TARGETED_REPLAY": "1",
+                "SPATIALACC_TARGETED_TRACE_SCOPE": "board_interface_source_context_and_host_output_path",
+                "SPATIALACC_TARGET_BOUNDARY": "board_wrapper_full_source_context_to_host_output_path_boundary"
+              },
+              "root_cause_alternatives": [
+                "the sample-project wrapper or source context is absent, unknown, or not included in the current discovery input",
+                "Vivado evidence genuinely lacks an exclusive replaceable compute-slot cell or source ownership boundary",
+                "the board-interface selector response schema is malformed, including required_capabilities not being an array"
+              ],
+              "stage_id": "debug_loop",
+              "target_boundary": "board_wrapper_full_source_context_to_host_output_path_boundary"
+            },
+            "tool_roles": [
+              "failure_slice_localization",
+              "boundary_trace_rerun",
+              "case_board_interface_discovery",
+              "causal_repair_context_pack"
+            ]
+          },
+          "action_sha256": "8349acac7e5a5f4a4efb9dd75a4fddaa9beb146dd54420437e3e3a621eece19c",
+          "id": "debug_loop.observe_board_interface_current_epoch",
+          "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/debug_loop/flow_actions/248_debug_loop_observe_board_interface_current_epoch.json",
+          "sha256": "d22d2dba4084d148b10bb9e37578f247a97b22cd92d061764b1380ababab01ff"
+        },
+        {
+          "action": {
+            "acceptance_checkers": [
+              "case_board_interface_discovery",
+              "case_multilayer_pipeline",
+              "case_axi_ddr_interface",
+              "real_tool.case_vcs_functional_sim",
+              "functional_sim",
+              "required_real_tool_evidence_check",
+              "verification_action_audit_check",
+              "stage_artifact_trust_barrier_check"
+            ],
+            "action_type": "current_layer_compile_only_verification",
+            "consumes": [
+              "current exact-board discovery context record",
+              "artifact.stage5.verification_artifact_contract",
+              "artifact.stage5.llm_action_audit",
+              "current hardware source manifest and hashes",
+              "exact discovered sample-project wrapper and simulation sources",
+              "current-stage trust and retry reconciliation evidence"
+            ],
+            "id": "debug_loop.retry_stage6_compile_only_after_discovery",
+            "on_failure": "Remain in debug_loop at board_axi_ddr_wrapped_system. If discovery is still blocked, request another bounded observation plan; if current-source VCS reports actual compiler, elaboration, or link errors, localize the earliest board-layer causal boundary and perform only an evidence-supported bounded repair before rerunning the same layer. Do not promote, run backend_board, or backtrack to code_generation or parameter_binding.",
+            "produces": [
+              "current-source VCS compile/elaboration/link evidence",
+              "updated Stage-6 board-interface, multilayer, AXI/DDR, and compile-only gate reports",
+              "new unpromoted Stage-6 verification result or a localized current-layer failure record"
+            ],
+            "rationale": "After the new observation establishes a ready exact-board contract, retry the same board_axi_ddr_closure layer in the registered bottom-up compile-only path. Acceptance requires current-source VCS compilation, elaboration, and linking; runtime execution, golden comparison, waveform generation, and weight loading are not prerequisites.",
+            "requires_approval": false,
+            "stage": "debug_loop",
+            "tool_roles": [
+              "case_board_interface_discovery",
+              "case_multilayer_pipeline",
+              "case_axi_ddr_interface",
+              "case_vcs_functional_sim",
+              "case_vcs_evidence_analyzer"
+            ]
+          },
+          "action_sha256": "3b21a9ad4b69f209ad9b9c041ce353de91216b4bb7302b16a4eec9439eb9be9f",
+          "id": "debug_loop.retry_stage6_compile_only_after_discovery",
+          "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/debug_loop/flow_actions/248_debug_loop_retry_stage6_compile_only_after_discovery.json",
+          "sha256": "4e317fa8c8fed3a7d412eb1335b6fbdd75f6c240fe12d4f04c07341c7f329fe6"
+        }
+      ],
+      "audit": {
+        "approval_required_actions_deferred": true,
+        "flow_controller_result_identity_required": true,
+        "same_stage_target_required": true,
+        "source_sacg_identity_required": true,
+        "status": "pass"
+      },
+      "deferred_actions": [],
+      "flow_controller_result": {
+        "agent_status": "retry_current_stage",
+        "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/agent/flow_controller/248_debug_loop/llm/flow_controller_agent_result.json",
+        "sha256": "f74afb53acd75394f6760dcdccb530a852f8d6deca829d9e9a0a759d75367a38",
+        "summary": "Retry the current debug_loop board_axi_ddr_closure with a new, bounded Stage-6 observation plan. The failure is a verification/interface-discovery capability and protocol failure, not an evidenced hardware-design failure; do not backtrack or promote downstream."
+      },
+      "handoff_identity": "3728246c21ab89467b0c483758904be782e27cadc08f7850d79188265fa8fb5a",
+      "identity_payload": {
+        "actions": [
+          {
+            "acceptance_checkers": [
+              "verification_artifact_contract_check",
+              "verification_action_audit_check",
+              "artifact_hash_check",
+              "sacg_memory_check",
+              "stage_retry_request_check",
+              "stage_artifact_trust_barrier_check",
+              "tool_protocol_check"
+            ],
+            "action_type": "retry_contract_reconciliation",
+            "consumes": [
+              "artifact.stage5.verification_artifact_contract",
+              "artifact.stage5.llm_action_audit",
+              "artifact.stage6.verification_result",
+              "artifact.stage6.repair_plan",
+              "artifact.stage6.repair_execution_report",
+              "source SACG state",
+              "current-source hash and manifest evidence"
+            ],
+            "id": "debug_loop.reconcile_stage6_retry_contract",
+            "on_failure": "Keep all six contamination barriers and both retry requests active; do not consume the failed Stage-6 artifacts as validated inputs, do not backtrack hardware stages, and return a bounded current-stage reconciliation failure.",
+            "produces": [
+              "current-stage retry reconciliation record",
+              "trust and provenance audit evidence",
+              "unpromoted current-epoch observation-plan input"
+            ],
+            "rationale": "The authoritative SACG memory has open retry_request.0002 and retry_request.0003 plus active contamination barriers. Reconcile the current retry against the Stage-5 verification contract and action audit before consuming any new Stage-6 result; this is a same-stage refinement, not a hardware backtrack.",
+            "requires_approval": false,
+            "stage": "debug_loop",
+            "tool_roles": [
+              "sacg_validate",
+              "verification_artifact_contract_check",
+              "verification_action_audit",
+              "artifact_hash_check",
+              "sacg_memory_check",
+              "stage_retry_request",
+              "stage_artifact_trust_barrier"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "failure_localization_check",
+              "targeted_replay_check",
+              "case_board_interface_discovery",
+              "required_real_tool_evidence_check",
+              "tool_protocol_check",
+              "human_boundary_check"
+            ],
+            "action_type": "targeted_current_layer_observation",
+            "consumes": [
+              "current-stage retry reconciliation record",
+              "artifact.stage5.verification_artifact_contract",
+              "artifact.stage5.llm_action_audit",
+              "latest Stage-6 board-interface failure report",
+              "current Vivado object and connectivity evidence",
+              "current user-supplied sample-project source catalog"
+            ],
+            "id": "debug_loop.observe_board_interface_current_epoch",
+            "on_failure": "Do not authorize RTL, wrapper, checker, or target-selection edits. Keep the current layer blocked and produce a bounded replan identifying the missing exact evidence or schema defect; never guess a board target or backtrack hardware stages.",
+            "produces": [
+              "verification/debug_closure/current_epoch_board_interface_observation.json",
+              "current exact-board discovery context record",
+              "failure-localization evidence for the board integration boundary"
+            ],
+            "rationale": "The previous replay did not isolate the current failure and used an empty stage_id. Perform a non-identical current-epoch observation focused on exact sample-project source context and the host/output-path control boundary. This distinguishes missing catalog context, absent exclusive compute-slot ownership, and malformed selector output without guessing a target or editing hardware.",
+            "requires_approval": false,
+            "stage": "debug_loop",
+            "targeted_replay_plan": {
+              "distinguishes": "The observation must report which exact artifact or boundary supports each alternative and must not substitute the shell cell for a compute slot. It is a new effective trace environment and a new current-stage identity, not a replay of the prior empty-stage-id boundary.",
+              "rerun_env": {
+                "SPATIALACC_BOUNDARY_TRACE": "1",
+                "SPATIALACC_TARGETED_REPLAY": "1",
+                "SPATIALACC_TARGETED_TRACE_SCOPE": "board_interface_source_context_and_host_output_path",
+                "SPATIALACC_TARGET_BOUNDARY": "board_wrapper_full_source_context_to_host_output_path_boundary"
+              },
+              "root_cause_alternatives": [
+                "the sample-project wrapper or source context is absent, unknown, or not included in the current discovery input",
+                "Vivado evidence genuinely lacks an exclusive replaceable compute-slot cell or source ownership boundary",
+                "the board-interface selector response schema is malformed, including required_capabilities not being an array"
+              ],
+              "stage_id": "debug_loop",
+              "target_boundary": "board_wrapper_full_source_context_to_host_output_path_boundary"
+            },
+            "tool_roles": [
+              "failure_slice_localization",
+              "boundary_trace_rerun",
+              "case_board_interface_discovery",
+              "causal_repair_context_pack"
+            ]
+          },
+          {
+            "acceptance_checkers": [
+              "case_board_interface_discovery",
+              "case_multilayer_pipeline",
+              "case_axi_ddr_interface",
+              "real_tool.case_vcs_functional_sim",
+              "functional_sim",
+              "required_real_tool_evidence_check",
+              "verification_action_audit_check",
+              "stage_artifact_trust_barrier_check"
+            ],
+            "action_type": "current_layer_compile_only_verification",
+            "consumes": [
+              "current exact-board discovery context record",
+              "artifact.stage5.verification_artifact_contract",
+              "artifact.stage5.llm_action_audit",
+              "current hardware source manifest and hashes",
+              "exact discovered sample-project wrapper and simulation sources",
+              "current-stage trust and retry reconciliation evidence"
+            ],
+            "id": "debug_loop.retry_stage6_compile_only_after_discovery",
+            "on_failure": "Remain in debug_loop at board_axi_ddr_wrapped_system. If discovery is still blocked, request another bounded observation plan; if current-source VCS reports actual compiler, elaboration, or link errors, localize the earliest board-layer causal boundary and perform only an evidence-supported bounded repair before rerunning the same layer. Do not promote, run backend_board, or backtrack to code_generation or parameter_binding.",
+            "produces": [
+              "current-source VCS compile/elaboration/link evidence",
+              "updated Stage-6 board-interface, multilayer, AXI/DDR, and compile-only gate reports",
+              "new unpromoted Stage-6 verification result or a localized current-layer failure record"
+            ],
+            "rationale": "After the new observation establishes a ready exact-board contract, retry the same board_axi_ddr_closure layer in the registered bottom-up compile-only path. Acceptance requires current-source VCS compilation, elaboration, and linking; runtime execution, golden comparison, waveform generation, and weight loading are not prerequisites.",
+            "requires_approval": false,
+            "stage": "debug_loop",
+            "tool_roles": [
+              "case_board_interface_discovery",
+              "case_multilayer_pipeline",
+              "case_axi_ddr_interface",
+              "case_vcs_functional_sim",
+              "case_vcs_evidence_analyzer"
+            ]
+          }
+        ],
+        "deferred_actions": [],
+        "flow_controller_result_sha256": "f74afb53acd75394f6760dcdccb530a852f8d6deca829d9e9a0a759d75367a38",
+        "source_sacg_state_sha256": "b9b9034517014dca7453807e5da6794ae9da61446229778e2806bc19bef4b8dd",
+        "target_stage": "debug_loop"
+      },
+      "materialized_actions": [
+        {
+          "action_sha256": "5dc7830a49d6c3d3bf3a47b9c4584a5a0a51d4ecce5fcdc4c8e440798cd526e0",
+          "id": "debug_loop.reconcile_stage6_retry_contract",
+          "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/debug_loop/retry_requests/248_debug_loop_reconcile_stage6_retry_contract.json",
+          "sha256": "fadc7b47ac999a47995eb93c3cdb7196b63938428b84be9fca1796f9cb8b028b"
+        },
+        {
+          "action_sha256": "8349acac7e5a5f4a4efb9dd75a4fddaa9beb146dd54420437e3e3a621eece19c",
+          "id": "debug_loop.observe_board_interface_current_epoch",
+          "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/debug_loop/flow_actions/248_debug_loop_observe_board_interface_current_epoch.json",
+          "sha256": "d22d2dba4084d148b10bb9e37578f247a97b22cd92d061764b1380ababab01ff"
+        },
+        {
+          "action_sha256": "3b21a9ad4b69f209ad9b9c041ce353de91216b4bb7302b16a4eec9439eb9be9f",
+          "id": "debug_loop.retry_stage6_compile_only_after_discovery",
+          "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/debug_loop/flow_actions/248_debug_loop_retry_stage6_compile_only_after_discovery.json",
+          "sha256": "4e317fa8c8fed3a7d412eb1335b6fbdd75f6c240fe12d4f04c07341c7f329fe6"
+        }
+      ],
+      "schema_version": "spatialaccagent.stage6_flow_controller_handoff.v1",
+      "source_flow_event": {
+        "decision": "retry",
+        "index": 248,
+        "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/debug_loop/flow_events/248_retry.json",
+        "sha256": "b14bc44e5b9b9e3f8b150c3c300d1190fcbad03f6353a0766ed5e660d1a43464",
+        "stage": "debug_loop"
+      },
+      "source_sacg_state": {
+        "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/debug_loop/flow_handoff_sources/b9b9034517014dca7453807e5da6794ae9da61446229778e2806bc19bef4b8dd.json.gz",
+        "sha256": "b9b9034517014dca7453807e5da6794ae9da61446229778e2806bc19bef4b8dd"
+      },
+      "status": "ready",
+      "target_stage": "debug_loop"
+    },
+    "flow_controller_handoff_routing": {
+      "policy": "validated handoff actions take precedence over stale inferred repair actions",
+      "repair_action_count": 2,
+      "status": "routed"
+    },
+    "hierarchical_repair_loop": {
+      "agent_runtime_llm_blocker": false,
+      "current_layer": {
+        "id": "board_axi_ddr_wrapped_system",
+        "missing_or_failed": [
+          "case_board_interface_discovery=fail",
+          "case_multilayer_pipeline=not_run",
+          "case_multilayer_functional=pending_later_stage",
+          "case_pipeline_deadlock_check=pending_later_stage",
+          "case_axi_ddr_interface=not_run",
+          "case_axi_protocol_check=pending_later_stage",
+          "case_ddr_image_roundtrip=pending_later_stage",
+          "functional_sim=fail",
+          "case_board_semantic_evidence=pending_later_stage"
+        ],
+        "order": 2,
+        "promotion_target": "backend_bitstream_and_board_runtime",
+        "purpose": "Debug the accelerator behind the real board AXI/DDR wrapper and runtime ABI.",
+        "repair_loop": "board_wrapper_tool_run__cctg_axi_ddr_slice__bounded_wrapper_or_runtime_repair__rerun",
+        "required_gates": [
+          {
+            "name": "case_board_interface_discovery",
+            "status": "fail"
+          },
+          {
+            "name": "case_multilayer_pipeline",
+            "status": "not_run"
+          },
+          {
+            "name": "case_multilayer_functional",
+            "status": "pending_later_stage"
+          },
+          {
+            "name": "case_pipeline_deadlock_check",
+            "status": "pending_later_stage"
+          },
+          {
+            "name": "case_axi_ddr_interface",
+            "status": "not_run"
+          },
+          {
+            "name": "case_axi_protocol_check",
+            "status": "pending_later_stage"
+          },
+          {
+            "name": "case_ddr_image_roundtrip",
+            "status": "pending_later_stage"
+          },
+          {
+            "name": "functional_sim",
+            "status": "fail"
+          },
+          {
+            "name": "case_board_semantic_evidence",
+            "status": "pending_later_stage"
+          }
+        ],
+        "status": "needs_repair"
+      },
+      "debug_loop_contract": {
+        "anti_spin_policy": {
+          "current_layer_failure_after_lower_pass_means": "debug current-layer integration, interconnect, wrapper, scheduler, data order, or boundary contract first",
+          "do_not_reopen_passed_lower_layer_without_contradicting_current_layer_trace": true,
+          "lower_layer_pass_evidence_is_reusable_not_absolute": true,
+          "passed_lower_layer_can_be_challenged_by_current_layer_trace": true,
+          "reopening_lower_layer_requires": [
+            "a current-layer boundary trace record that directly contradicts lower-layer pass evidence",
+            "or a SACG-approved design-contract change invalidating the previous lower-layer evidence"
+          ],
+          "when_reopened": [
+            "record the contradicted lower-layer gate/module and source trace in SACG",
+            "rerun only the challenged lower-layer scope with expanded boundary stimuli or corrected contract",
+            "after lower-layer revalidation, rerun the failed current layer before any higher-layer promotion"
+          ]
+        },
+        "cctg_policy": {
+          "first_action_when_trace_missing": "debug_trace_rerun for the failed current-layer gate",
+          "localized_action": "causal_slice_repair over the localized boundary or current-layer integration slice",
+          "purpose": "speed root-cause localization by mapping real-tool symptoms to the earliest violated contract/boundary",
+          "required_on_failure": true,
+          "trace_schema_is_case_adapter_driven": true
+        },
+        "layer_order": [
+          "operator_leaf_modules",
+          "single_transformer_layer_kernel",
+          "board_axi_ddr_wrapped_system"
+        ],
+        "layers": [
+          {
+            "entry_condition": "Stage6 verification gate DAG and real case-adapter tools are available",
+            "exit_condition": "all required gates for this layer pass with real-tool evidence and any required golden/numeric comparison",
+            "failure_loop": [
+              "run current-layer real tool",
+              "collect CCTG boundary trace or failure localization evidence",
+              "classify earliest violated boundary/current-layer contract",
+              "apply only bounded repair permitted by SACG/human-boundary rules",
+              "rerun the same current layer until pass before promotion"
+            ],
+            "id": "operator_leaf_modules",
+            "order": 0,
+            "promotion_target": "single_transformer_layer_kernel",
+            "purpose": "Debug every spatially parallel operator module before integration.",
+            "required_gates": [
+              "case_real_weight_artifacts",
+              "case_target_model_reference",
+              "case_semantic_testbench",
+              "case_stage_leaf_static",
+              "boundary_contract_check",
+              "case_leaf_functional",
+              "case_leaf_golden_compare",
+              "case_operator_leaf_semantic_evidence"
+            ]
+          },
+          {
+            "entry_condition": "all lower debug layers have pass evidence",
+            "exit_condition": "all required gates for this layer pass with real-tool evidence and any required golden/numeric comparison",
+            "failure_loop": [
+              "run current-layer real tool",
+              "collect CCTG boundary trace or failure localization evidence",
+              "classify earliest violated boundary/current-layer contract",
+              "apply only bounded repair permitted by SACG/human-boundary rules",
+              "rerun the same current layer until pass before promotion"
+            ],
+            "id": "single_transformer_layer_kernel",
+            "order": 1,
+            "promotion_target": "board_axi_ddr_wrapped_system",
+            "purpose": "Debug the connected one-layer transformer spatial kernel after leaf modules pass.",
+            "required_gates": [
+              "single_transformer_layer",
+              "case_single_layer_functional",
+              "case_single_layer_golden_compare",
+              "case_single_layer_semantic_evidence"
+            ]
+          },
+          {
+            "entry_condition": "all lower debug layers have pass evidence",
+            "exit_condition": "all required gates for this layer pass with real-tool evidence and any required golden/numeric comparison",
+            "failure_loop": [
+              "run current-layer real tool",
+              "collect CCTG boundary trace or failure localization evidence",
+              "classify earliest violated boundary/current-layer contract",
+              "apply only bounded repair permitted by SACG/human-boundary rules",
+              "rerun the same current layer until pass before promotion"
+            ],
+            "id": "board_axi_ddr_wrapped_system",
+            "order": 2,
+            "promotion_target": "backend_bitstream_and_board_runtime",
+            "purpose": "Debug the accelerator behind the real board AXI/DDR wrapper and runtime ABI.",
+            "required_gates": [
+              "case_board_interface_discovery",
+              "case_multilayer_pipeline",
+              "case_multilayer_functional",
+              "case_pipeline_deadlock_check",
+              "case_axi_ddr_interface",
+              "case_axi_protocol_check",
+              "case_ddr_image_roundtrip",
+              "functional_sim",
+              "case_board_semantic_evidence"
+            ]
+          }
+        ],
+        "promotion_policy": {
+          "backend_or_board_runtime_requires_all_three_debug_layers_to_pass": true,
+          "dependency_skipped_or_smoke_evidence_cannot_promote": true,
+          "next_layer_requires_current_layer_certificate": true
+        },
+        "schema_version": "spatialaccagent.hierarchical_debug_loop_contract.v0"
+      },
+      "failed_current_layer_gates": [
+        {
+          "name": "case_board_interface_discovery",
+          "status": "fail"
+        },
+        {
+          "name": "case_multilayer_pipeline",
+          "status": "not_run"
+        },
+        {
+          "name": "case_axi_ddr_interface",
+          "status": "not_run"
+        },
+        {
+          "name": "functional_sim",
+          "status": "fail"
+        }
+      ],
+      "failure_kind": "verification_capability_gap",
+      "layers": [
+        {
+          "id": "operator_leaf_modules",
+          "missing_or_failed": [
+            "case_real_weight_artifacts=pending_later_stage",
+            "case_target_model_reference=pending_later_stage",
+            "case_semantic_testbench=pending_later_stage",
+            "case_stage_leaf_static=pending_later_stage",
+            "boundary_contract_check=pending_later_stage",
+            "case_leaf_golden_compare=pending_later_stage",
+            "case_operator_leaf_semantic_evidence=pending_later_stage"
+          ],
+          "order": 0,
+          "promotion_target": "single_transformer_layer_kernel",
+          "purpose": "Debug every spatially parallel operator module before integration.",
+          "repair_loop": "module_tool_run__cctg_localize__bounded_module_or_checker_repair__rerun",
+          "required_gates": [
+            {
+              "name": "case_real_weight_artifacts",
+              "status": "pending_later_stage"
+            },
+            {
+              "name": "case_target_model_reference",
+              "status": "pending_later_stage"
+            },
+            {
+              "name": "case_semantic_testbench",
+              "status": "pending_later_stage"
+            },
+            {
+              "name": "case_stage_leaf_static",
+              "status": "pending_later_stage"
+            },
+            {
+              "name": "boundary_contract_check",
+              "status": "pending_later_stage"
+            },
+            {
+              "name": "case_leaf_functional",
+              "status": "pass"
+            },
+            {
+              "name": "case_leaf_golden_compare",
+              "status": "pending_later_stage"
+            },
+            {
+              "name": "case_operator_leaf_semantic_evidence",
+              "status": "pending_later_stage"
+            }
+          ],
+          "status": "pass"
+        },
+        {
+          "id": "single_transformer_layer_kernel",
+          "missing_or_failed": [
+            "single_transformer_layer=pending_later_stage",
+            "case_single_layer_golden_compare=pending_later_stage",
+            "case_single_layer_semantic_evidence=pending_later_stage"
+          ],
+          "order": 1,
+          "promotion_target": "board_axi_ddr_wrapped_system",
+          "purpose": "Debug the connected one-layer transformer spatial kernel after leaf modules pass.",
+          "repair_loop": "layer_tool_run__cctg_failure_slice__bounded_interconnect_or_module_repair__rerun",
+          "required_gates": [
+            {
+              "name": "single_transformer_layer",
+              "status": "pending_later_stage"
+            },
+            {
+              "name": "case_single_layer_functional",
+              "status": "pass"
+            },
+            {
+              "name": "case_single_layer_golden_compare",
+              "status": "pending_later_stage"
+            },
+            {
+              "name": "case_single_layer_semantic_evidence",
+              "status": "pending_later_stage"
+            }
+          ],
+          "status": "pass"
+        },
+        {
+          "id": "board_axi_ddr_wrapped_system",
+          "missing_or_failed": [
+            "case_board_interface_discovery=fail",
+            "case_multilayer_pipeline=not_run",
+            "case_multilayer_functional=pending_later_stage",
+            "case_pipeline_deadlock_check=pending_later_stage",
+            "case_axi_ddr_interface=not_run",
+            "case_axi_protocol_check=pending_later_stage",
+            "case_ddr_image_roundtrip=pending_later_stage",
+            "functional_sim=fail",
+            "case_board_semantic_evidence=pending_later_stage"
+          ],
+          "order": 2,
+          "promotion_target": "backend_bitstream_and_board_runtime",
+          "purpose": "Debug the accelerator behind the real board AXI/DDR wrapper and runtime ABI.",
+          "repair_loop": "board_wrapper_tool_run__cctg_axi_ddr_slice__bounded_wrapper_or_runtime_repair__rerun",
+          "required_gates": [
+            {
+              "name": "case_board_interface_discovery",
+              "status": "fail"
+            },
+            {
+              "name": "case_multilayer_pipeline",
+              "status": "not_run"
+            },
+            {
+              "name": "case_multilayer_functional",
+              "status": "pending_later_stage"
+            },
+            {
+              "name": "case_pipeline_deadlock_check",
+              "status": "pending_later_stage"
+            },
+            {
+              "name": "case_axi_ddr_interface",
+              "status": "not_run"
+            },
+            {
+              "name": "case_axi_protocol_check",
+              "status": "pending_later_stage"
+            },
+            {
+              "name": "case_ddr_image_roundtrip",
+              "status": "pending_later_stage"
+            },
+            {
+              "name": "functional_sim",
+              "status": "fail"
+            },
+            {
+              "name": "case_board_semantic_evidence",
+              "status": "pending_later_stage"
+            }
+          ],
+          "status": "needs_repair"
+        }
+      ],
+      "lower_layer_evidence_challenge": {
+        "lower_layer_pass_evidence": [
+          "case_leaf_functional",
+          "case_single_layer_functional"
+        ],
+        "reason": "challenge object is present but does not assert a contradiction",
+        "status": "no_lower_layer_challenge"
+      },
+      "lower_layer_pass_evidence": [
+        "case_leaf_functional",
+        "case_single_layer_functional"
+      ],
+      "out_of_order_executed_higher_layer_gates": [],
+      "policy": {
+        "cctg_required_for_root_cause_localization": true,
+        "current_layer_failure_after_lower_pass_means_integration_boundary_debug": true,
+        "do_not_reopen_passed_lower_layer_without_contradicting_boundary_trace": true,
+        "failed_layer_must_repair_before_next_layer": true,
+        "higher_layer_trace_can_trigger_targeted_lower_layer_backtrack": true,
+        "lower_layer_pass_evidence_is_reusable_not_absolute": true,
+        "no_stage_promotion_from_smoke_or_dependency_skipped_evidence": true,
+        "three_layer_debug_order_is_mandatory": true,
+        "tool_output_then_llm_analysis_then_bounded_patch_then_rerun": true
+      },
+      "root_candidate_module": null,
+      "schema_version": "spatialaccagent.hierarchical_repair_loop.v0",
+      "status": "needs_repair",
+      "violated_contract": "verification_semantic_capability_contract"
+    },
+    "prior_repair_execution_feedback": {
+      "blockers": [],
+      "deterministic_feedback": [],
+      "execution_errors": [],
+      "input_fingerprint_sha256": "e92f12d39bcc48862a2d65d3539b049a43f35dd7772d4cd2c6ff5f522a695243",
+      "llm_records": [],
+      "repair_execution_status": "historical_only",
+      "report": {
+        "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/repair_execution/repair_execution_report.json",
+        "schema_version": "spatialaccagent.repair_execution_report.v0",
+        "sha256": "aaccd9890ea3057052aa21b96ba3a285178423868b69224ecc6ae7c73516ed82"
+      },
+      "required_capabilities": [],
+      "schema_version": "spatialaccagent.prior_repair_execution_feedback.v1",
+      "scope_selection": {
+        "excluded_unbound_or_other_layer_record_count": 0,
+        "policy": "Only prior Stage-6 LLM records with an explicit matching debug layer are reusable. Historical unbound or other-layer records remain on disk but are not repair-planning evidence.",
+        "required_debug_layer": "board_axi_ddr_wrapped_system",
+        "selected_record_count": 0
+      },
+      "status": "historical_only",
+      "summary": "no prior repair-execution LLM feedback is bound to the current hierarchy layer",
+      "validation": {
+        "errors": [],
+        "status": "pass"
+      }
+    }
+  },
+  "failures": [
+    {
+      "acceptance_role": "diagnostic_or_static_tool",
+      "checker": "real_tool.case_board_interface_discovery",
+      "command": "python3 scripts/verification/sample_project_board_interface_discovery.py --run-dir /home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114",
+      "execution_fingerprint_sha256": "8f04d173c77627c222091409096003ea07786571e55ae98edce137e036fa6528",
+      "failure_class": "runtime_harness",
+      "kind": "case_board_interface_discovery",
+      "log_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/verification/real_tools/case_board_interface_discovery.json",
+      "produced_reports": [
+        {
+          "blockers": [
+            "board-interface LLM agent did not return real structured interpretation: board-interface selector status is not ready/pass/selected: blocked; board-interface selector blocker: The progressive Vivado review identifies only vivado:cell:c010e6fe30f3945cadd2cc51 (/u280_shell), and explicitly establishes that it is a board shell rather than a separately evidenced replaceable compute-slot cell.; board-interface selector blocker: No reviewed source has owner_cell_ids proving exclusive ownership of a compute-slot instance boundary; therefore an exact minimal exclusive replacement boundary cannot be nominated without guessing.; board-interface selector blocker: The shell control, clock/reset, gamma, and aggregated HBM interfaces are established, but the compute-slot connectivity and exclusive module/instance boundary remain unproved and require downstream full-source review.; board-interface selector did not choose a Vivado cell object ID; selector relevant_sample_source_ids are empty, unknown, or omit the wrapper; LLM requested unknown source context ID: sample-source:6e9598a5528cfc8e13abac3a4",
+            "board-interface LLM required_capabilities is not an array",
+            "board-interface LLM status is not ready/pass: blocked",
+            "board-interface LLM blocker: board-interface selector status is not ready/pass/selected: blocked",
+            "board-interface LLM blocker: board-interface selector blocker: The progressive Vivado review identifies only vivado:cell:c010e6fe30f3945cadd2cc51 (/u280_shell), and explicitly establishes that it is a board shell rather than a separately evidenced replaceable compute-slot cell.",
+            "board-interface LLM blocker: board-interface selector blocker: No reviewed source has owner_cell_ids proving exclusive ownership of a compute-slot instance boundary; therefore an exact minimal exclusive replacement boundary cannot be nominated without guessing.",
+            "board-interface LLM blocker: board-interface selector blocker: The shell control, clock/reset, gamma, and aggregated HBM interfaces are established, but the compute-slot connectivity and exclusive module/instance boundary remain unproved and require downstream full-source review.",
+            "board-interface LLM blocker: board-interface selector did not choose a Vivado cell object ID",
+            "board-interface LLM blocker: selector relevant_sample_source_ids are empty, unknown, or omit the wrapper",
+            "board-interface LLM blocker: LLM requested unknown source context ID: sample-source:6e9598a5528cfc8e13abac3a4",
+            "LLM wrapper_top_module is missing",
+            "compute_slot_abi.selected_cell_id is not a Vivado cell fact",
+            "timing and AXI contracts cannot be validated without a selected Vivado cell",
+            "selected compute slot does not expose profile-required 512-bit AXI data"
+          ],
+          "path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/verification/board_interface/board_source_identity.json",
+          "schema_version": "spatialaccagent.exact_sample_board_source_identity.v2",
+          "status": "fail",
+          "summary": null
+        }
+      ],
+      "python_environment": null,
+      "python_environment_fingerprint_sha256": null,
+      "python_environment_group": null,
+      "repair_hint": "inspect violated constraint and rerun the related checker",
+      "required": true,
+      "required_group": null,
+      "reused_existing_result": false,
+      "status": "fail",
+      "summary": "returncode=1 report_status=fail blockers=board-interface LLM agent did not return real structured interpretation: board-interface selector status is not ready/pass/selected: blocked; board-interface selector blocker: The progressive Vivado review identifies only vivado:cell:c010e6fe30f3945cadd2cc51 (/u280_shell), and explicitly establishes that it is a board shell rather than a separately evidenced replaceable compute-slot cell.; board-interface selector blocker: No reviewed source has owner_cell_ids proving exclusive ownership of a compute-slot instance boundary; therefore an exact minimal exclusive replacement boundary cannot be nominated without guessing.; board-interface selector blocker: The shell control, clock/reset, gamma, and aggregated HBM interfaces are established, but the compute-slot connectivity and exclusive module/instance boundary remain unproved and require downstream full-source review.; board-interface selector did not choose a Vivado cell object ID; selector relevant_sample_source_ids are empty, unknown, or omit the wrapper; LLM requested unknown source context ID: sample-source:6e9598a5528cfc8e13abac3a4; board-interface LLM required_capabilities is not an array; board-interface LLM status is not ready/pass: blocked; board-interface LLM blocker: board-interface selector status is not ready/pass/selected: blocked",
+      "tool_report_blockers": [
+        "board-interface LLM agent did not return real structured interpretation: board-interface selector status is not ready/pass/selected: blocked; board-interface selector blocker: The progressive Vivado review identifies only vivado:cell:c010e6fe30f3945cadd2cc51 (/u280_shell), and explicitly establishes that it is a board shell rather than a separately evidenced replaceable compute-slot cell.; board-interface selector blocker: No reviewed source has owner_cell_ids proving exclusive ownership of a compute-slot instance boundary; therefore an exact minimal exclusive replacement boundary cannot be nominated without guessing.; board-interface selector blocker: The shell control, clock/reset, gamma, and aggregated HBM interfaces are established, but the compute-slot connectivity and exclusive module/instance boundary remain unproved and require downstream full-source review.; board-interface selector did not choose a Vivado cell object ID; selector relevant_sample_source_ids are empty, unknown, or omit the wrapper; LLM requested unknown source context ID: sample-source:6e9598a5528cfc8e13abac3a4",
+        "board-interface LLM required_capabilities is not an array",
+        "board-interface LLM status is not ready/pass: blocked",
+        "board-interface LLM blocker: board-interface selector status is not ready/pass/selected: blocked",
+        "board-interface LLM blocker: board-interface selector blocker: The progressive Vivado review identifies only vivado:cell:c010e6fe30f3945cadd2cc51 (/u280_shell), and explicitly establishes that it is a board shell rather than a separately evidenced replaceable compute-slot cell.",
+        "board-interface LLM blocker: board-interface selector blocker: No reviewed source has owner_cell_ids proving exclusive ownership of a compute-slot instance boundary; therefore an exact minimal exclusive replacement boundary cannot be nominated without guessing.",
+        "board-interface LLM blocker: board-interface selector blocker: The shell control, clock/reset, gamma, and aggregated HBM interfaces are established, but the compute-slot connectivity and exclusive module/instance boundary remain unproved and require downstream full-source review.",
+        "board-interface LLM blocker: board-interface selector did not choose a Vivado cell object ID",
+        "board-interface LLM blocker: selector relevant_sample_source_ids are empty, unknown, or omit the wrapper",
+        "board-interface LLM blocker: LLM requested unknown source context ID: sample-source:6e9598a5528cfc8e13abac3a4",
+        "LLM wrapper_top_module is missing",
+        "compute_slot_abi.selected_cell_id is not a Vivado cell fact",
+        "timing and AXI contracts cannot be validated without a selected Vivado cell",
+        "selected compute slot does not expose profile-required 512-bit AXI data"
+      ],
+      "tool_report_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/verification/board_interface/board_source_identity.json",
+      "tool_report_status": "fail",
+      "tool_report_summary": null
+    },
+    {
+      "checker": "required_real_tool_evidence_check",
+      "failure_class": "runtime_harness",
+      "repair_hint": "inspect violated constraint and rerun the related checker",
+      "status": "fail",
+      "summary": "required real-tool evidence missing or failed: case_board_interface_discovery=fail; dependency_blocked=['case_multilayer_pipeline=not_run', 'case_axi_ddr_interface=not_run', 'case_vcs_functional_sim=not_run', 'functional_sim: blocked by prerequisite gate [case_vcs_functional_sim=not_run]']"
+    },
+    {
+      "checker": "hierarchical_verification_maturity_check",
+      "failure_class": "runtime_harness",
+      "repair_hint": "inspect violated constraint and rerun the related checker",
+      "status": "fail",
+      "summary": "multilayer_pipeline_functional: functional_sim=fail; axi_ddr_functional: functional_sim=fail"
+    }
+  ],
+  "llm_reconciliation": {
+    "active_approval_action_ids": [],
+    "approval_action_ids": [],
+    "approved_action_ids": [],
+    "auto_executable_read_only_capability_action_ids": [],
+    "converted_to_instrumentation_first": false,
+    "deferred_action_ids": [
+      "debug_loop.reconcile_stage6_retry_contract",
+      "debug_loop.retry_stage6_compile_only_after_discovery"
+    ],
+    "deferred_approval_action_ids": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "verification_artifact_contract_check",
+          "verification_action_audit_check",
+          "artifact_hash_check",
+          "sacg_memory_check",
+          "stage_retry_request_check",
+          "stage_artifact_trust_barrier_check",
+          "tool_protocol_check"
+        ],
+        "action_type": "retry_contract_reconciliation",
+        "consumes": [
+          "artifact.stage5.verification_artifact_contract",
+          "artifact.stage5.llm_action_audit",
+          "artifact.stage6.verification_result",
+          "artifact.stage6.repair_plan",
+          "artifact.stage6.repair_execution_report",
+          "source SACG state",
+          "current-source hash and manifest evidence"
+        ],
+        "id": "debug_loop.reconcile_stage6_retry_contract",
+        "on_failure": "Keep both retry requests and all six contamination barriers active. Do not consume failed Stage-6 artifacts as validated inputs, backtrack hardware stages, or promote; return a bounded reconciliation failure.",
+        "produces": [
+          "current-stage retry reconciliation record",
+          "trust and provenance audit evidence",
+          "unpromoted current-epoch observation-plan input"
+        ],
+        "rationale": "SACG truth has two open same-stage retry requests and six active contamination barriers. Reconcile the retry against the Stage-5 contract and audit before treating new Stage-6 evidence as validated; this is not a hardware backtrack.",
+        "requires_approval": false,
+        "stage": "debug_loop",
+        "tool_roles": [
+          "sacg_validate",
+          "verification_artifact_contract_check",
+          "verification_action_audit",
+          "artifact_hash_check",
+          "sacg_memory_check",
+          "stage_retry_request",
+          "stage_artifact_trust_barrier"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "targeted_replay_check",
+          "case_board_interface_discovery",
+          "required_real_tool_evidence_check",
+          "tool_protocol_check",
+          "human_boundary_check"
+        ],
+        "action_type": "targeted_current_layer_observation",
+        "consumes": [
+          "current-stage retry reconciliation record",
+          "artifact.stage5.verification_artifact_contract",
+          "artifact.stage5.llm_action_audit",
+          "latest Stage-6 board-interface failure report",
+          "current Vivado object and connectivity evidence",
+          "current user-supplied sample-project source catalog"
+        ],
+        "id": "debug_loop.observe_board_interface_current_epoch",
+        "on_failure": "Do not authorize RTL, wrapper, checker, or target-selection edits. Keep the current layer blocked and return a bounded replan naming the missing exact evidence or schema defect; do not backtrack to certified lower layers.",
+        "produces": [
+          "verification/debug_closure/current_epoch_board_interface_observation.json",
+          "current exact-board discovery context record",
+          "failure-localization evidence for the board integration boundary"
+        ],
+        "rationale": "The current failure is a board-interface discovery and selector evidence gap, not an evidenced RTL compiler failure. Obtain fresh evidence for exact sample-project source context, cell ownership, and selector response while preserving the known lower-layer passes and avoiding target guesses.",
+        "requires_approval": false,
+        "stage": "debug_loop",
+        "targeted_replay_plan": {
+          "distinguishes": "Establish from cited current artifacts whether the sample-project wrapper/source context is available, whether a distinct replaceable compute-slot cell and exclusive ownership boundary are evidenced, and whether selector output satisfies its schema. Do not substitute the shell for a compute slot or guess module, board, or path names.",
+          "rerun_env": {
+            "SPATIALACC_BOUNDARY_TRACE": "1",
+            "SPATIALACC_TARGETED_REPLAY": "1",
+            "SPATIALACC_TARGETED_TRACE_SCOPE": "board_interface_source_context_and_host_output_path",
+            "SPATIALACC_TARGET_BOUNDARY": "board_wrapper_full_source_context_to_host_output_path_boundary"
+          },
+          "stage_id": "debug_loop",
+          "target_boundary": "board_wrapper_full_source_context_to_host_output_path_boundary"
+        },
+        "tool_roles": [
+          "failure_slice_localization",
+          "boundary_trace_rerun",
+          "case_board_interface_discovery",
+          "causal_repair_context_pack"
+        ]
+      },
+      {
+        "acceptance_checkers": [
+          "case_board_interface_discovery",
+          "case_multilayer_pipeline",
+          "case_axi_ddr_interface",
+          "real_tool.case_vcs_functional_sim",
+          "required_real_tool_evidence_check",
+          "verification_action_audit_check",
+          "stage_artifact_trust_barrier_check"
+        ],
+        "action_type": "current_layer_compile_only_verification",
+        "consumes": [
+          "current exact-board discovery context record",
+          "artifact.stage5.verification_artifact_contract",
+          "artifact.stage5.llm_action_audit",
+          "current hardware source manifest and hashes",
+          "exact discovered sample-project wrapper and simulation sources",
+          "current-stage trust and retry reconciliation evidence"
+        ],
+        "id": "debug_loop.retry_stage6_compile_only_after_discovery",
+        "on_failure": "Remain at board_axi_ddr_wrapped_system. If discovery is blocked, request bounded current-layer evidence; if VCS reports compiler, elaboration, or link errors, localize the earliest board-layer cause and make only an evidence-supported bounded repair before rerunning this layer. Do not run the simulation executable, promote, or reopen lower layers without a trace contradicting their pass evidence.",
+        "produces": [
+          "current-source VCS compile/elaboration/link evidence",
+          "updated Stage-6 board-interface and compile-only gate reports",
+          "new unpromoted Stage-6 verification result or localized current-layer failure record"
+        ],
+        "rationale": "Once current discovery establishes the exact board wrapper and compile context, run the registered board VCS compile-only mode. Stage-6 acceptance is current-source VCS compilation, elaboration, and linking; no simulator execution or numerical/runtime evidence is required.",
+        "requires_approval": false,
+        "stage": "debug_loop",
+        "tool_roles": [
+          "case_board_interface_discovery",
+          "case_multilayer_pipeline",
+          "case_axi_ddr_interface",
+          "case_vcs_functional_sim",
+          "case_vcs_evidence_analyzer"
+        ]
+      }
+    ],
+    "observation_route_error": null,
+    "repeated_targeted_observation": null,
+    "repeated_targeted_observation_escalated": false,
+    "routed_observation_action_id": "debug_loop.observe_board_interface_current_epoch",
+    "status": "needs_repair",
+    "summary": "Keep Stage 6 at the board_axi_ddr_wrapped_system layer. The supplied evidence contains no VCS compiler, elaboration, or link errors: board-interface discovery failed before the exact-board VCS compile-only gate could run. Obtain fresh current-layer discovery evidence, then run the exact-board VCS compile/elaboration/link gate; do not run the simulator executable or claim a hardware pass until that gate passes.",
+    "vetoed_pre_llm_execution": false
+  },
+  "note": "Failing checkers are classified; not_run real tools are evidence gaps, not automatic repair failures.",
+  "pending_evidence": [
+    {
+      "acceptance_role": "diagnostic_or_static_tool",
+      "checker": "real_tool.case_multilayer_pipeline",
+      "command": "python3 scripts/verification/case_hierarchical_check.py --run-dir /home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114 --gate multilayer_pipeline",
+      "execution_fingerprint_sha256": null,
+      "failure_class": "pending_required_evidence",
+      "kind": "case_multilayer_pipeline",
+      "log_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/verification/real_tools/case_multilayer_pipeline.json",
+      "python_environment": null,
+      "python_environment_fingerprint_sha256": null,
+      "python_environment_group": null,
+      "required": true,
+      "required_group": null,
+      "reused_existing_result": false,
+      "status": "not_run",
+      "summary": "skipped because dependency gate(s) are not pass: ['case_board_interface_discovery']",
+      "tool_report_blockers": [],
+      "tool_report_path": null,
+      "tool_report_status": null,
+      "tool_report_summary": null
+    },
+    {
+      "acceptance_role": "diagnostic_or_static_tool",
+      "checker": "real_tool.case_axi_ddr_interface",
+      "command": "python3 scripts/verification/case_hierarchical_check.py --run-dir /home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114 --gate axi_ddr_interface",
+      "execution_fingerprint_sha256": null,
+      "failure_class": "pending_required_evidence",
+      "kind": "case_axi_ddr_interface",
+      "log_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/verification/real_tools/case_axi_ddr_interface.json",
+      "python_environment": null,
+      "python_environment_fingerprint_sha256": null,
+      "python_environment_group": null,
+      "required": true,
+      "required_group": null,
+      "reused_existing_result": false,
+      "status": "not_run",
+      "summary": "skipped because dependency gate(s) are not pass: ['case_multilayer_pipeline', 'case_board_interface_discovery']",
+      "tool_report_blockers": [],
+      "tool_report_path": null,
+      "tool_report_status": null,
+      "tool_report_summary": null
+    },
+    {
+      "acceptance_role": "functional_sim_candidate",
+      "checker": "real_tool.case_vcs_functional_sim",
+      "command": "python3 scripts/verification/case_board_vcs_functional.py --run-dir /home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114",
+      "execution_fingerprint_sha256": null,
+      "failure_class": "pending_required_evidence",
+      "kind": "vcs_real_functional_sim",
+      "log_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/verification/real_tools/case_vcs_functional_sim.json",
+      "python_environment": null,
+      "python_environment_fingerprint_sha256": null,
+      "python_environment_group": null,
+      "required": true,
+      "required_group": "functional_sim",
+      "reused_existing_result": false,
+      "status": "not_run",
+      "summary": "skipped because dependency gate(s) are not pass: ['case_multilayer_pipeline', 'case_board_interface_discovery', 'case_axi_ddr_interface']",
+      "tool_report_blockers": [],
+      "tool_report_path": null,
+      "tool_report_status": null,
+      "tool_report_summary": null
+    },
+    {
+      "acceptance_role": "diagnostic_or_static_tool",
+      "checker": "real_tool.case_vcs_evidence_analyzer",
+      "command": "python3 scripts/verification/case_vcs_evidence_analyzer.py --run-dir /home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114 --out /home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/verification/case_diagnostics/vcs_functional_diagnosis.json",
+      "execution_fingerprint_sha256": null,
+      "failure_class": "not_executed",
+      "kind": "vcs_evidence_analyzer",
+      "log_path": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/verification/real_tools/case_vcs_evidence_analyzer.json",
+      "python_environment": null,
+      "python_environment_fingerprint_sha256": null,
+      "python_environment_group": "target_model_oracle",
+      "required": false,
+      "required_group": null,
+      "reused_existing_result": false,
+      "status": "not_run",
+      "summary": "skipped because dependency gate(s) are not pass: ['case_multilayer_pipeline', 'case_board_interface_discovery', 'case_axi_ddr_interface']",
+      "tool_report_blockers": [],
+      "tool_report_path": null,
+      "tool_report_status": null,
+      "tool_report_summary": null
+    }
+  ],
+  "repair_actions": [
+    {
+      "approval_required": false,
+      "debug_layer": "board_axi_ddr_wrapped_system",
+      "failed_current_layer_gates": [],
+      "flow_action": {
+        "acceptance_checkers": [
+          "failure_localization_check",
+          "targeted_replay_check",
+          "case_board_interface_discovery",
+          "required_real_tool_evidence_check",
+          "tool_protocol_check",
+          "human_boundary_check"
+        ],
+        "action_type": "targeted_current_layer_observation",
+        "consumes": [
+          "current-stage retry reconciliation record",
+          "artifact.stage5.verification_artifact_contract",
+          "artifact.stage5.llm_action_audit",
+          "latest Stage-6 board-interface failure report",
+          "current Vivado object and connectivity evidence",
+          "current user-supplied sample-project source catalog"
+        ],
+        "id": "debug_loop.observe_board_interface_current_epoch",
+        "on_failure": "Do not authorize RTL, wrapper, checker, or target-selection edits. Keep the current layer blocked and return a bounded replan naming the missing exact evidence or schema defect; do not backtrack to certified lower layers.",
+        "produces": [
+          "verification/debug_closure/current_epoch_board_interface_observation.json",
+          "current exact-board discovery context record",
+          "failure-localization evidence for the board integration boundary"
+        ],
+        "rationale": "The current failure is a board-interface discovery and selector evidence gap, not an evidenced RTL compiler failure. Obtain fresh evidence for exact sample-project source context, cell ownership, and selector response while preserving the known lower-layer passes and avoiding target guesses.",
+        "requires_approval": false,
+        "stage": "debug_loop",
+        "targeted_replay_plan": {
+          "distinguishes": "Establish from cited current artifacts whether the sample-project wrapper/source context is available, whether a distinct replaceable compute-slot cell and exclusive ownership boundary are evidenced, and whether selector output satisfies its schema. Do not substitute the shell for a compute slot or guess module, board, or path names.",
+          "rerun_env": {
+            "SPATIALACC_BOUNDARY_TRACE": "1",
+            "SPATIALACC_TARGETED_REPLAY": "1",
+            "SPATIALACC_TARGETED_TRACE_SCOPE": "board_interface_source_context_and_host_output_path",
+            "SPATIALACC_TARGET_BOUNDARY": "board_wrapper_full_source_context_to_host_output_path_boundary"
+          },
+          "stage_id": "debug_loop",
+          "target_boundary": "board_wrapper_full_source_context_to_host_output_path_boundary"
+        },
+        "tool_roles": [
+          "failure_slice_localization",
+          "boundary_trace_rerun",
+          "case_board_interface_discovery",
+          "causal_repair_context_pack"
+        ]
+      },
+      "llm_action_type": "targeted_current_layer_observation",
+      "lower_layer_pass_evidence": [],
+      "minimal_repair_context": {
+        "deferred_flow_actions": [
+          {
+            "acceptance_checkers": [
+              "case_board_interface_discovery",
+              "case_multilayer_pipeline",
+              "case_axi_ddr_interface",
+              "real_tool.case_vcs_functional_sim",
+              "functional_sim",
+              "required_real_tool_evidence_check",
+              "verification_action_audit_check",
+              "stage_artifact_trust_barrier_check"
+            ],
+            "action_type": "current_layer_compile_only_verification",
+            "consumes": [
+              "current exact-board discovery context record",
+              "artifact.stage5.verification_artifact_contract",
+              "artifact.stage5.llm_action_audit",
+              "current hardware source manifest and hashes",
+              "exact discovered sample-project wrapper and simulation sources",
+              "current-stage trust and retry reconciliation evidence"
+            ],
+            "id": "debug_loop.retry_stage6_compile_only_after_discovery",
+            "on_failure": "Remain in debug_loop at board_axi_ddr_wrapped_system. If discovery is still blocked, request another bounded observation plan; if current-source VCS reports actual compiler, elaboration, or link errors, localize the earliest board-layer causal boundary and perform only an evidence-supported bounded repair before rerunning the same layer. Do not promote, run backend_board, or backtrack to code_generation or parameter_binding.",
+            "produces": [
+              "current-source VCS compile/elaboration/link evidence",
+              "updated Stage-6 board-interface, multilayer, AXI/DDR, and compile-only gate reports",
+              "new unpromoted Stage-6 verification result or a localized current-layer failure record"
+            ],
+            "rationale": "After the new observation establishes a ready exact-board contract, retry the same board_axi_ddr_closure layer in the registered bottom-up compile-only path. Acceptance requires current-source VCS compilation, elaboration, and linking; runtime execution, golden comparison, waveform generation, and weight loading are not prerequisites.",
+            "requires_approval": false,
+            "stage": "debug_loop",
+            "tool_roles": [
+              "case_board_interface_discovery",
+              "case_multilayer_pipeline",
+              "case_axi_ddr_interface",
+              "case_vcs_functional_sim",
+              "case_vcs_evidence_analyzer"
+            ]
+          }
+        ],
+        "flow_action_id": "debug_loop.observe_board_interface_current_epoch",
+        "flow_action_type": "targeted_current_layer_observation",
+        "llm_observation_action": {
+          "acceptance_checkers": [
+            "failure_localization_check",
+            "targeted_replay_check",
+            "case_board_interface_discovery",
+            "required_real_tool_evidence_check",
+            "tool_protocol_check",
+            "human_boundary_check"
+          ],
+          "action_type": "targeted_current_layer_observation",
+          "consumes": [
+            "current-stage retry reconciliation record",
+            "artifact.stage5.verification_artifact_contract",
+            "artifact.stage5.llm_action_audit",
+            "latest Stage-6 board-interface failure report",
+            "current Vivado object and connectivity evidence",
+            "current user-supplied sample-project source catalog"
+          ],
+          "id": "debug_loop.observe_board_interface_current_epoch",
+          "on_failure": "Do not authorize RTL, wrapper, checker, or target-selection edits. Keep the current layer blocked and return a bounded replan naming the missing exact evidence or schema defect; do not backtrack to certified lower layers.",
+          "produces": [
+            "verification/debug_closure/current_epoch_board_interface_observation.json",
+            "current exact-board discovery context record",
+            "failure-localization evidence for the board integration boundary"
+          ],
+          "rationale": "The current failure is a board-interface discovery and selector evidence gap, not an evidenced RTL compiler failure. Obtain fresh evidence for exact sample-project source context, cell ownership, and selector response while preserving the known lower-layer passes and avoiding target guesses.",
+          "requires_approval": false,
+          "stage": "debug_loop",
+          "targeted_replay_plan": {
+            "distinguishes": "Establish from cited current artifacts whether the sample-project wrapper/source context is available, whether a distinct replaceable compute-slot cell and exclusive ownership boundary are evidenced, and whether selector output satisfies its schema. Do not substitute the shell for a compute slot or guess module, board, or path names.",
+            "rerun_env": {
+              "SPATIALACC_BOUNDARY_TRACE": "1",
+              "SPATIALACC_TARGETED_REPLAY": "1",
+              "SPATIALACC_TARGETED_TRACE_SCOPE": "board_interface_source_context_and_host_output_path",
+              "SPATIALACC_TARGET_BOUNDARY": "board_wrapper_full_source_context_to_host_output_path_boundary"
+            },
+            "stage_id": "debug_loop",
+            "target_boundary": "board_wrapper_full_source_context_to_host_output_path_boundary"
+          },
+          "tool_roles": [
+            "failure_slice_localization",
+            "boundary_trace_rerun",
+            "case_board_interface_discovery",
+            "causal_repair_context_pack"
+          ]
+        },
+        "preflight_flow_actions": [],
+        "trace_record": {}
+      },
+      "reason": "The current failure is a board-interface discovery and selector evidence gap, not an evidenced RTL compiler failure. Obtain fresh evidence for exact sample-project source context, cell ownership, and selector response while preserving the known lower-layer passes and avoiding target guesses.",
+      "scope": "debug_trace_rerun",
+      "source": "llm_repair_disposition",
+      "targeted_replay_plan": {
+        "distinguishes": "Establish from cited current artifacts whether the sample-project wrapper/source context is available, whether a distinct replaceable compute-slot cell and exclusive ownership boundary are evidenced, and whether selector output satisfies its schema. Do not substitute the shell for a compute slot or guess module, board, or path names.",
+        "rerun_env": {
+          "SPATIALACC_BOUNDARY_TRACE": "1",
+          "SPATIALACC_TARGETED_REPLAY": "1",
+          "SPATIALACC_TARGETED_TRACE_SCOPE": "board_interface_source_context_and_host_output_path",
+          "SPATIALACC_TARGET_BOUNDARY": "board_wrapper_full_source_context_to_host_output_path_boundary"
+        },
+        "stage_id": "debug_loop",
+        "target_boundary": "board_wrapper_full_source_context_to_host_output_path_boundary"
+      },
+      "tool": "case_leaf_functional",
+      "trace_target_stage_id": "debug_loop"
+    }
+  ],
+  "repair_routing_priority": {
+    "reason": "repair plan does not contain one bounded repair action",
+    "schema_version": "spatialaccagent.repair_routing_priority.v1",
+    "status": "not_applicable"
+  },
+  "repair_workflow": {
+    "approval_steps": [],
+    "blockers": [],
+    "case_adapter": {
+      "case_id": "gpt2_hf_case",
+      "model_family": "gpt2",
+      "status": "ready"
+    },
+    "llm_disposition": {
+      "active_approval_action_ids": [],
+      "approval_action_ids": [],
+      "approved_action_ids": [],
+      "auto_executable_read_only_capability_action_ids": [],
+      "converted_to_instrumentation_first": false,
+      "deferred_action_ids": [
+        "debug_loop.reconcile_stage6_retry_contract",
+        "debug_loop.retry_stage6_compile_only_after_discovery"
+      ],
+      "deferred_approval_action_ids": [],
+      "executable_actions": [
+        {
+          "acceptance_checkers": [
+            "verification_artifact_contract_check",
+            "verification_action_audit_check",
+            "artifact_hash_check",
+            "sacg_memory_check",
+            "stage_retry_request_check",
+            "stage_artifact_trust_barrier_check",
+            "tool_protocol_check"
+          ],
+          "action_type": "retry_contract_reconciliation",
+          "consumes": [
+            "artifact.stage5.verification_artifact_contract",
+            "artifact.stage5.llm_action_audit",
+            "artifact.stage6.verification_result",
+            "artifact.stage6.repair_plan",
+            "artifact.stage6.repair_execution_report",
+            "source SACG state",
+            "current-source hash and manifest evidence"
+          ],
+          "id": "debug_loop.reconcile_stage6_retry_contract",
+          "on_failure": "Keep both retry requests and all six contamination barriers active. Do not consume failed Stage-6 artifacts as validated inputs, backtrack hardware stages, or promote; return a bounded reconciliation failure.",
+          "produces": [
+            "current-stage retry reconciliation record",
+            "trust and provenance audit evidence",
+            "unpromoted current-epoch observation-plan input"
+          ],
+          "rationale": "SACG truth has two open same-stage retry requests and six active contamination barriers. Reconcile the retry against the Stage-5 contract and audit before treating new Stage-6 evidence as validated; this is not a hardware backtrack.",
+          "requires_approval": false,
+          "stage": "debug_loop",
+          "tool_roles": [
+            "sacg_validate",
+            "verification_artifact_contract_check",
+            "verification_action_audit",
+            "artifact_hash_check",
+            "sacg_memory_check",
+            "stage_retry_request",
+            "stage_artifact_trust_barrier"
+          ]
+        },
+        {
+          "acceptance_checkers": [
+            "failure_localization_check",
+            "targeted_replay_check",
+            "case_board_interface_discovery",
+            "required_real_tool_evidence_check",
+            "tool_protocol_check",
+            "human_boundary_check"
+          ],
+          "action_type": "targeted_current_layer_observation",
+          "consumes": [
+            "current-stage retry reconciliation record",
+            "artifact.stage5.verification_artifact_contract",
+            "artifact.stage5.llm_action_audit",
+            "latest Stage-6 board-interface failure report",
+            "current Vivado object and connectivity evidence",
+            "current user-supplied sample-project source catalog"
+          ],
+          "id": "debug_loop.observe_board_interface_current_epoch",
+          "on_failure": "Do not authorize RTL, wrapper, checker, or target-selection edits. Keep the current layer blocked and return a bounded replan naming the missing exact evidence or schema defect; do not backtrack to certified lower layers.",
+          "produces": [
+            "verification/debug_closure/current_epoch_board_interface_observation.json",
+            "current exact-board discovery context record",
+            "failure-localization evidence for the board integration boundary"
+          ],
+          "rationale": "The current failure is a board-interface discovery and selector evidence gap, not an evidenced RTL compiler failure. Obtain fresh evidence for exact sample-project source context, cell ownership, and selector response while preserving the known lower-layer passes and avoiding target guesses.",
+          "requires_approval": false,
+          "stage": "debug_loop",
+          "targeted_replay_plan": {
+            "distinguishes": "Establish from cited current artifacts whether the sample-project wrapper/source context is available, whether a distinct replaceable compute-slot cell and exclusive ownership boundary are evidenced, and whether selector output satisfies its schema. Do not substitute the shell for a compute slot or guess module, board, or path names.",
+            "rerun_env": {
+              "SPATIALACC_BOUNDARY_TRACE": "1",
+              "SPATIALACC_TARGETED_REPLAY": "1",
+              "SPATIALACC_TARGETED_TRACE_SCOPE": "board_interface_source_context_and_host_output_path",
+              "SPATIALACC_TARGET_BOUNDARY": "board_wrapper_full_source_context_to_host_output_path_boundary"
+            },
+            "stage_id": "debug_loop",
+            "target_boundary": "board_wrapper_full_source_context_to_host_output_path_boundary"
+          },
+          "tool_roles": [
+            "failure_slice_localization",
+            "boundary_trace_rerun",
+            "case_board_interface_discovery",
+            "causal_repair_context_pack"
+          ]
+        },
+        {
+          "acceptance_checkers": [
+            "case_board_interface_discovery",
+            "case_multilayer_pipeline",
+            "case_axi_ddr_interface",
+            "real_tool.case_vcs_functional_sim",
+            "required_real_tool_evidence_check",
+            "verification_action_audit_check",
+            "stage_artifact_trust_barrier_check"
+          ],
+          "action_type": "current_layer_compile_only_verification",
+          "consumes": [
+            "current exact-board discovery context record",
+            "artifact.stage5.verification_artifact_contract",
+            "artifact.stage5.llm_action_audit",
+            "current hardware source manifest and hashes",
+            "exact discovered sample-project wrapper and simulation sources",
+            "current-stage trust and retry reconciliation evidence"
+          ],
+          "id": "debug_loop.retry_stage6_compile_only_after_discovery",
+          "on_failure": "Remain at board_axi_ddr_wrapped_system. If discovery is blocked, request bounded current-layer evidence; if VCS reports compiler, elaboration, or link errors, localize the earliest board-layer cause and make only an evidence-supported bounded repair before rerunning this layer. Do not run the simulation executable, promote, or reopen lower layers without a trace contradicting their pass evidence.",
+          "produces": [
+            "current-source VCS compile/elaboration/link evidence",
+            "updated Stage-6 board-interface and compile-only gate reports",
+            "new unpromoted Stage-6 verification result or localized current-layer failure record"
+          ],
+          "rationale": "Once current discovery establishes the exact board wrapper and compile context, run the registered board VCS compile-only mode. Stage-6 acceptance is current-source VCS compilation, elaboration, and linking; no simulator execution or numerical/runtime evidence is required.",
+          "requires_approval": false,
+          "stage": "debug_loop",
+          "tool_roles": [
+            "case_board_interface_discovery",
+            "case_multilayer_pipeline",
+            "case_axi_ddr_interface",
+            "case_vcs_functional_sim",
+            "case_vcs_evidence_analyzer"
+          ]
+        }
+      ],
+      "observation_route_error": null,
+      "repeated_targeted_observation": null,
+      "repeated_targeted_observation_escalated": false,
+      "routed_observation_action_id": "debug_loop.observe_board_interface_current_epoch",
+      "status": "needs_repair",
+      "summary": "Keep Stage 6 at the board_axi_ddr_wrapped_system layer. The supplied evidence contains no VCS compiler, elaboration, or link errors: board-interface discovery failed before the exact-board VCS compile-only gate could run. Obtain fresh current-layer discovery evidence, then run the exact-board VCS compile/elaboration/link gate; do not run the simulator executable or claim a hardware pass until that gate passes.",
+      "vetoed_pre_llm_execution": false
+    },
+    "observation_replan": {
+      "deferred_llm_actions": [
+        {
+          "acceptance_checkers": [
+            "verification_artifact_contract_check",
+            "verification_action_audit_check",
+            "artifact_hash_check",
+            "sacg_memory_check",
+            "stage_retry_request_check",
+            "stage_artifact_trust_barrier_check",
+            "tool_protocol_check"
+          ],
+          "action_type": "retry_contract_reconciliation",
+          "consumes": [
+            "artifact.stage5.verification_artifact_contract",
+            "artifact.stage5.llm_action_audit",
+            "artifact.stage6.verification_result",
+            "artifact.stage6.repair_plan",
+            "artifact.stage6.repair_execution_report",
+            "source SACG state",
+            "current-source hash and manifest evidence"
+          ],
+          "id": "debug_loop.reconcile_stage6_retry_contract",
+          "on_failure": "Keep both retry requests and all six contamination barriers active. Do not consume failed Stage-6 artifacts as validated inputs, backtrack hardware stages, or promote; return a bounded reconciliation failure.",
+          "produces": [
+            "current-stage retry reconciliation record",
+            "trust and provenance audit evidence",
+            "unpromoted current-epoch observation-plan input"
+          ],
+          "rationale": "SACG truth has two open same-stage retry requests and six active contamination barriers. Reconcile the retry against the Stage-5 contract and audit before treating new Stage-6 evidence as validated; this is not a hardware backtrack.",
+          "requires_approval": false,
+          "stage": "debug_loop",
+          "tool_roles": [
+            "sacg_validate",
+            "verification_artifact_contract_check",
+            "verification_action_audit",
+            "artifact_hash_check",
+            "sacg_memory_check",
+            "stage_retry_request",
+            "stage_artifact_trust_barrier"
+          ]
+        },
+        {
+          "acceptance_checkers": [
+            "case_board_interface_discovery",
+            "case_multilayer_pipeline",
+            "case_axi_ddr_interface",
+            "real_tool.case_vcs_functional_sim",
+            "required_real_tool_evidence_check",
+            "verification_action_audit_check",
+            "stage_artifact_trust_barrier_check"
+          ],
+          "action_type": "current_layer_compile_only_verification",
+          "consumes": [
+            "current exact-board discovery context record",
+            "artifact.stage5.verification_artifact_contract",
+            "artifact.stage5.llm_action_audit",
+            "current hardware source manifest and hashes",
+            "exact discovered sample-project wrapper and simulation sources",
+            "current-stage trust and retry reconciliation evidence"
+          ],
+          "id": "debug_loop.retry_stage6_compile_only_after_discovery",
+          "on_failure": "Remain at board_axi_ddr_wrapped_system. If discovery is blocked, request bounded current-layer evidence; if VCS reports compiler, elaboration, or link errors, localize the earliest board-layer cause and make only an evidence-supported bounded repair before rerunning this layer. Do not run the simulation executable, promote, or reopen lower layers without a trace contradicting their pass evidence.",
+          "produces": [
+            "current-source VCS compile/elaboration/link evidence",
+            "updated Stage-6 board-interface and compile-only gate reports",
+            "new unpromoted Stage-6 verification result or localized current-layer failure record"
+          ],
+          "rationale": "Once current discovery establishes the exact board wrapper and compile context, run the registered board VCS compile-only mode. Stage-6 acceptance is current-source VCS compilation, elaboration, and linking; no simulator execution or numerical/runtime evidence is required.",
+          "requires_approval": false,
+          "stage": "debug_loop",
+          "tool_roles": [
+            "case_board_interface_discovery",
+            "case_multilayer_pipeline",
+            "case_axi_ddr_interface",
+            "case_vcs_functional_sim",
+            "case_vcs_evidence_analyzer"
+          ]
+        }
+      ],
+      "policy": "execute only this new current-layer observation; defer every repair or gate action until the resulting real-tool evidence is replanned",
+      "status": "ready",
+      "step_id": "repair_step.00"
+    },
+    "policy": {
+      "cctg_boundary_trace_or_localization_required_before_code_repair": false,
+      "do_not_apply_unbounded_code_changes": true,
+      "do_not_reopen_passed_lower_layer_without_contradicting_current_layer_trace": true,
+      "do_not_rerun_smoke_as_acceptance": true,
+      "lower_layer_pass_evidence_is_reusable_not_absolute": true,
+      "regression_reruns_must_use_case_tool_protocols": true,
+      "repair_output_must_return_to_stage6": true,
+      "same_debug_layer_must_rerun_until_functionally_correct_before_promotion": true,
+      "targeted_lower_layer_backtrack_requires_contradicting_current_layer_trace": true
+    },
+    "run_dir": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114",
+    "schema_version": "spatialaccagent.repair_workflow.v0",
+    "status": "ready",
+    "steps": [
+      {
+        "action": {
+          "approval_required": false,
+          "debug_layer": "board_axi_ddr_wrapped_system",
+          "failed_current_layer_gates": [],
+          "flow_action": {
+            "acceptance_checkers": [
+              "failure_localization_check",
+              "targeted_replay_check",
+              "case_board_interface_discovery",
+              "required_real_tool_evidence_check",
+              "tool_protocol_check",
+              "human_boundary_check"
+            ],
+            "action_type": "targeted_current_layer_observation",
+            "consumes": [
+              "current-stage retry reconciliation record",
+              "artifact.stage5.verification_artifact_contract",
+              "artifact.stage5.llm_action_audit",
+              "latest Stage-6 board-interface failure report",
+              "current Vivado object and connectivity evidence",
+              "current user-supplied sample-project source catalog"
+            ],
+            "id": "debug_loop.observe_board_interface_current_epoch",
+            "on_failure": "Do not authorize RTL, wrapper, checker, or target-selection edits. Keep the current layer blocked and return a bounded replan naming the missing exact evidence or schema defect; do not backtrack to certified lower layers.",
+            "produces": [
+              "verification/debug_closure/current_epoch_board_interface_observation.json",
+              "current exact-board discovery context record",
+              "failure-localization evidence for the board integration boundary"
+            ],
+            "rationale": "The current failure is a board-interface discovery and selector evidence gap, not an evidenced RTL compiler failure. Obtain fresh evidence for exact sample-project source context, cell ownership, and selector response while preserving the known lower-layer passes and avoiding target guesses.",
+            "requires_approval": false,
+            "stage": "debug_loop",
+            "targeted_replay_plan": {
+              "distinguishes": "Establish from cited current artifacts whether the sample-project wrapper/source context is available, whether a distinct replaceable compute-slot cell and exclusive ownership boundary are evidenced, and whether selector output satisfies its schema. Do not substitute the shell for a compute slot or guess module, board, or path names.",
+              "rerun_env": {
+                "SPATIALACC_BOUNDARY_TRACE": "1",
+                "SPATIALACC_TARGETED_REPLAY": "1",
+                "SPATIALACC_TARGETED_TRACE_SCOPE": "board_interface_source_context_and_host_output_path",
+                "SPATIALACC_TARGET_BOUNDARY": "board_wrapper_full_source_context_to_host_output_path_boundary"
+              },
+              "stage_id": "debug_loop",
+              "target_boundary": "board_wrapper_full_source_context_to_host_output_path_boundary"
+            },
+            "tool_roles": [
+              "failure_slice_localization",
+              "boundary_trace_rerun",
+              "case_board_interface_discovery",
+              "causal_repair_context_pack"
+            ]
+          },
+          "llm_action_type": "targeted_current_layer_observation",
+          "lower_layer_pass_evidence": [],
+          "minimal_repair_context": {
+            "deferred_flow_actions": [
+              {
+                "acceptance_checkers": [
+                  "case_board_interface_discovery",
+                  "case_multilayer_pipeline",
+                  "case_axi_ddr_interface",
+                  "real_tool.case_vcs_functional_sim",
+                  "functional_sim",
+                  "required_real_tool_evidence_check",
+                  "verification_action_audit_check",
+                  "stage_artifact_trust_barrier_check"
+                ],
+                "action_type": "current_layer_compile_only_verification",
+                "consumes": [
+                  "current exact-board discovery context record",
+                  "artifact.stage5.verification_artifact_contract",
+                  "artifact.stage5.llm_action_audit",
+                  "current hardware source manifest and hashes",
+                  "exact discovered sample-project wrapper and simulation sources",
+                  "current-stage trust and retry reconciliation evidence"
+                ],
+                "id": "debug_loop.retry_stage6_compile_only_after_discovery",
+                "on_failure": "Remain in debug_loop at board_axi_ddr_wrapped_system. If discovery is still blocked, request another bounded observation plan; if current-source VCS reports actual compiler, elaboration, or link errors, localize the earliest board-layer causal boundary and perform only an evidence-supported bounded repair before rerunning the same layer. Do not promote, run backend_board, or backtrack to code_generation or parameter_binding.",
+                "produces": [
+                  "current-source VCS compile/elaboration/link evidence",
+                  "updated Stage-6 board-interface, multilayer, AXI/DDR, and compile-only gate reports",
+                  "new unpromoted Stage-6 verification result or a localized current-layer failure record"
+                ],
+                "rationale": "After the new observation establishes a ready exact-board contract, retry the same board_axi_ddr_closure layer in the registered bottom-up compile-only path. Acceptance requires current-source VCS compilation, elaboration, and linking; runtime execution, golden comparison, waveform generation, and weight loading are not prerequisites.",
+                "requires_approval": false,
+                "stage": "debug_loop",
+                "tool_roles": [
+                  "case_board_interface_discovery",
+                  "case_multilayer_pipeline",
+                  "case_axi_ddr_interface",
+                  "case_vcs_functional_sim",
+                  "case_vcs_evidence_analyzer"
+                ]
+              }
+            ],
+            "flow_action_id": "debug_loop.observe_board_interface_current_epoch",
+            "flow_action_type": "targeted_current_layer_observation",
+            "llm_observation_action": {
+              "acceptance_checkers": [
+                "failure_localization_check",
+                "targeted_replay_check",
+                "case_board_interface_discovery",
+                "required_real_tool_evidence_check",
+                "tool_protocol_check",
+                "human_boundary_check"
+              ],
+              "action_type": "targeted_current_layer_observation",
+              "consumes": [
+                "current-stage retry reconciliation record",
+                "artifact.stage5.verification_artifact_contract",
+                "artifact.stage5.llm_action_audit",
+                "latest Stage-6 board-interface failure report",
+                "current Vivado object and connectivity evidence",
+                "current user-supplied sample-project source catalog"
+              ],
+              "id": "debug_loop.observe_board_interface_current_epoch",
+              "on_failure": "Do not authorize RTL, wrapper, checker, or target-selection edits. Keep the current layer blocked and return a bounded replan naming the missing exact evidence or schema defect; do not backtrack to certified lower layers.",
+              "produces": [
+                "verification/debug_closure/current_epoch_board_interface_observation.json",
+                "current exact-board discovery context record",
+                "failure-localization evidence for the board integration boundary"
+              ],
+              "rationale": "The current failure is a board-interface discovery and selector evidence gap, not an evidenced RTL compiler failure. Obtain fresh evidence for exact sample-project source context, cell ownership, and selector response while preserving the known lower-layer passes and avoiding target guesses.",
+              "requires_approval": false,
+              "stage": "debug_loop",
+              "targeted_replay_plan": {
+                "distinguishes": "Establish from cited current artifacts whether the sample-project wrapper/source context is available, whether a distinct replaceable compute-slot cell and exclusive ownership boundary are evidenced, and whether selector output satisfies its schema. Do not substitute the shell for a compute slot or guess module, board, or path names.",
+                "rerun_env": {
+                  "SPATIALACC_BOUNDARY_TRACE": "1",
+                  "SPATIALACC_TARGETED_REPLAY": "1",
+                  "SPATIALACC_TARGETED_TRACE_SCOPE": "board_interface_source_context_and_host_output_path",
+                  "SPATIALACC_TARGET_BOUNDARY": "board_wrapper_full_source_context_to_host_output_path_boundary"
+                },
+                "stage_id": "debug_loop",
+                "target_boundary": "board_wrapper_full_source_context_to_host_output_path_boundary"
+              },
+              "tool_roles": [
+                "failure_slice_localization",
+                "boundary_trace_rerun",
+                "case_board_interface_discovery",
+                "causal_repair_context_pack"
+              ]
+            },
+            "preflight_flow_actions": [],
+            "trace_record": {}
+          },
+          "reason": "The current failure is a board-interface discovery and selector evidence gap, not an evidenced RTL compiler failure. Obtain fresh evidence for exact sample-project source context, cell ownership, and selector response while preserving the known lower-layer passes and avoiding target guesses.",
+          "scope": "debug_trace_rerun",
+          "source": "llm_repair_disposition",
+          "targeted_replay_plan": {
+            "distinguishes": "Establish from cited current artifacts whether the sample-project wrapper/source context is available, whether a distinct replaceable compute-slot cell and exclusive ownership boundary are evidenced, and whether selector output satisfies its schema. Do not substitute the shell for a compute slot or guess module, board, or path names.",
+            "rerun_env": {
+              "SPATIALACC_BOUNDARY_TRACE": "1",
+              "SPATIALACC_TARGETED_REPLAY": "1",
+              "SPATIALACC_TARGETED_TRACE_SCOPE": "board_interface_source_context_and_host_output_path",
+              "SPATIALACC_TARGET_BOUNDARY": "board_wrapper_full_source_context_to_host_output_path_boundary"
+            },
+            "stage_id": "debug_loop",
+            "target_boundary": "board_wrapper_full_source_context_to_host_output_path_boundary"
+          },
+          "tool": "case_leaf_functional",
+          "trace_target_stage_id": "debug_loop"
+        },
+        "approval_required": false,
+        "boundary_trace_required": true,
+        "debug_layer": "board_axi_ddr_wrapped_system",
+        "execution": {
+          "argv": [
+            "python3",
+            "scripts/verification/case_leaf_operator_verify.py",
+            "--run-dir",
+            "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114",
+            "--mode",
+            "functional",
+            "--stage-id",
+            "debug_loop"
+          ],
+          "cwd": "/home/remote/workspace/Qwen2-Accelerator",
+          "env": {
+            "SPATIALACC_BOUNDARY_TRACE": "1",
+            "SPATIALACC_DEBUG_LAYER": "board_axi_ddr_wrapped_system",
+            "SPATIALACC_TARGETED_REPLAY": "1"
+          },
+          "source": "case_adapter_fallback"
+        },
+        "failed_current_layer_gates": [],
+        "id": "repair_step.00",
+        "lower_layer_pass_evidence": [],
+        "repair_context": {
+          "deferred_flow_actions": [
+            {
+              "acceptance_checkers": [
+                "case_board_interface_discovery",
+                "case_multilayer_pipeline",
+                "case_axi_ddr_interface",
+                "real_tool.case_vcs_functional_sim",
+                "functional_sim",
+                "required_real_tool_evidence_check",
+                "verification_action_audit_check",
+                "stage_artifact_trust_barrier_check"
+              ],
+              "action_type": "current_layer_compile_only_verification",
+              "consumes": [
+                "current exact-board discovery context record",
+                "artifact.stage5.verification_artifact_contract",
+                "artifact.stage5.llm_action_audit",
+                "current hardware source manifest and hashes",
+                "exact discovered sample-project wrapper and simulation sources",
+                "current-stage trust and retry reconciliation evidence"
+              ],
+              "id": "debug_loop.retry_stage6_compile_only_after_discovery",
+              "on_failure": "Remain in debug_loop at board_axi_ddr_wrapped_system. If discovery is still blocked, request another bounded observation plan; if current-source VCS reports actual compiler, elaboration, or link errors, localize the earliest board-layer causal boundary and perform only an evidence-supported bounded repair before rerunning the same layer. Do not promote, run backend_board, or backtrack to code_generation or parameter_binding.",
+              "produces": [
+                "current-source VCS compile/elaboration/link evidence",
+                "updated Stage-6 board-interface, multilayer, AXI/DDR, and compile-only gate reports",
+                "new unpromoted Stage-6 verification result or a localized current-layer failure record"
+              ],
+              "rationale": "After the new observation establishes a ready exact-board contract, retry the same board_axi_ddr_closure layer in the registered bottom-up compile-only path. Acceptance requires current-source VCS compilation, elaboration, and linking; runtime execution, golden comparison, waveform generation, and weight loading are not prerequisites.",
+              "requires_approval": false,
+              "stage": "debug_loop",
+              "tool_roles": [
+                "case_board_interface_discovery",
+                "case_multilayer_pipeline",
+                "case_axi_ddr_interface",
+                "case_vcs_functional_sim",
+                "case_vcs_evidence_analyzer"
+              ]
+            }
+          ],
+          "flow_action_id": "debug_loop.observe_board_interface_current_epoch",
+          "flow_action_type": "targeted_current_layer_observation",
+          "llm_observation_action": {
+            "acceptance_checkers": [
+              "failure_localization_check",
+              "targeted_replay_check",
+              "case_board_interface_discovery",
+              "required_real_tool_evidence_check",
+              "tool_protocol_check",
+              "human_boundary_check"
+            ],
+            "action_type": "targeted_current_layer_observation",
+            "consumes": [
+              "current-stage retry reconciliation record",
+              "artifact.stage5.verification_artifact_contract",
+              "artifact.stage5.llm_action_audit",
+              "latest Stage-6 board-interface failure report",
+              "current Vivado object and connectivity evidence",
+              "current user-supplied sample-project source catalog"
+            ],
+            "id": "debug_loop.observe_board_interface_current_epoch",
+            "on_failure": "Do not authorize RTL, wrapper, checker, or target-selection edits. Keep the current layer blocked and return a bounded replan naming the missing exact evidence or schema defect; do not backtrack to certified lower layers.",
+            "produces": [
+              "verification/debug_closure/current_epoch_board_interface_observation.json",
+              "current exact-board discovery context record",
+              "failure-localization evidence for the board integration boundary"
+            ],
+            "rationale": "The current failure is a board-interface discovery and selector evidence gap, not an evidenced RTL compiler failure. Obtain fresh evidence for exact sample-project source context, cell ownership, and selector response while preserving the known lower-layer passes and avoiding target guesses.",
+            "requires_approval": false,
+            "stage": "debug_loop",
+            "targeted_replay_plan": {
+              "distinguishes": "Establish from cited current artifacts whether the sample-project wrapper/source context is available, whether a distinct replaceable compute-slot cell and exclusive ownership boundary are evidenced, and whether selector output satisfies its schema. Do not substitute the shell for a compute slot or guess module, board, or path names.",
+              "rerun_env": {
+                "SPATIALACC_BOUNDARY_TRACE": "1",
+                "SPATIALACC_TARGETED_REPLAY": "1",
+                "SPATIALACC_TARGETED_TRACE_SCOPE": "board_interface_source_context_and_host_output_path",
+                "SPATIALACC_TARGET_BOUNDARY": "board_wrapper_full_source_context_to_host_output_path_boundary"
+              },
+              "stage_id": "debug_loop",
+              "target_boundary": "board_wrapper_full_source_context_to_host_output_path_boundary"
+            },
+            "tool_roles": [
+              "failure_slice_localization",
+              "boundary_trace_rerun",
+              "case_board_interface_discovery",
+              "causal_repair_context_pack"
+            ]
+          },
+          "preflight_flow_actions": [],
+          "trace_record": {}
+        },
+        "resolved_protocol_name": "case_leaf_functional",
+        "scope": "debug_trace_rerun",
+        "source": "llm_repair_disposition",
+        "status": "ready_to_execute",
+        "tool": "case_leaf_functional",
+        "tool_capability": {
+          "capabilities": [
+            "boundary_trace",
+            "boundary_trace_rerun",
+            "operator_leaf_functional_sim",
+            "random_input_stimulus",
+            "real_model_weights_consumed",
+            "real_tool_execution",
+            "target_model_operator_semantics",
+            "targeted_leaf_replay",
+            "vcs_compile_and_elaboration"
+          ],
+          "produces": [
+            "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/verification/case_hierarchy/leaf_functional.json",
+            "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/verification/operator_leaf_functional",
+            "operator semantic functional report"
+          ],
+          "supports_boundary_trace": true
+        },
+        "trace_target": {
+          "stage_id": "debug_loop",
+          "stage_id_arg": "--stage-id"
+        }
+      }
+    ],
+    "superseded_repair_actions": [
+      {
+        "approval_required": true,
+        "flow_action_id": "debug_loop.reconcile_stage6_retry_contract",
+        "flow_action_type": "retry_contract_reconciliation",
+        "reason": "validated flow-controller action has no bounded Stage-6 workflow mapping",
+        "scope": "flow_controller_action_unroutable",
+        "source": "flow_controller_handoff"
+      },
+      {
+        "approval_required": false,
+        "debug_layer": "board_axi_ddr_wrapped_system",
+        "failed_current_layer_gates": [],
+        "flow_action": {
+          "acceptance_checkers": [
+            "failure_localization_check",
+            "targeted_replay_check",
+            "case_board_interface_discovery",
+            "required_real_tool_evidence_check",
+            "tool_protocol_check",
+            "human_boundary_check"
+          ],
+          "action_type": "targeted_current_layer_observation",
+          "consumes": [
+            "current-stage retry reconciliation record",
+            "artifact.stage5.verification_artifact_contract",
+            "artifact.stage5.llm_action_audit",
+            "latest Stage-6 board-interface failure report",
+            "current Vivado object and connectivity evidence",
+            "current user-supplied sample-project source catalog"
+          ],
+          "id": "debug_loop.observe_board_interface_current_epoch",
+          "on_failure": "Do not authorize RTL, wrapper, checker, or target-selection edits. Keep the current layer blocked and produce a bounded replan identifying the missing exact evidence or schema defect; never guess a board target or backtrack hardware stages.",
+          "produces": [
+            "verification/debug_closure/current_epoch_board_interface_observation.json",
+            "current exact-board discovery context record",
+            "failure-localization evidence for the board integration boundary"
+          ],
+          "rationale": "The previous replay did not isolate the current failure and used an empty stage_id. Perform a non-identical current-epoch observation focused on exact sample-project source context and the host/output-path control boundary. This distinguishes missing catalog context, absent exclusive compute-slot ownership, and malformed selector output without guessing a target or editing hardware.",
+          "requires_approval": false,
+          "stage": "debug_loop",
+          "targeted_replay_plan": {
+            "distinguishes": "The observation must report which exact artifact or boundary supports each alternative and must not substitute the shell cell for a compute slot. It is a new effective trace environment and a new current-stage identity, not a replay of the prior empty-stage-id boundary.",
+            "rerun_env": {
+              "SPATIALACC_BOUNDARY_TRACE": "1",
+              "SPATIALACC_TARGETED_REPLAY": "1",
+              "SPATIALACC_TARGETED_TRACE_SCOPE": "board_interface_source_context_and_host_output_path",
+              "SPATIALACC_TARGET_BOUNDARY": "board_wrapper_full_source_context_to_host_output_path_boundary"
+            },
+            "root_cause_alternatives": [
+              "the sample-project wrapper or source context is absent, unknown, or not included in the current discovery input",
+              "Vivado evidence genuinely lacks an exclusive replaceable compute-slot cell or source ownership boundary",
+              "the board-interface selector response schema is malformed, including required_capabilities not being an array"
+            ],
+            "stage_id": "debug_loop",
+            "target_boundary": "board_wrapper_full_source_context_to_host_output_path_boundary"
+          },
+          "tool_roles": [
+            "failure_slice_localization",
+            "boundary_trace_rerun",
+            "case_board_interface_discovery",
+            "causal_repair_context_pack"
+          ]
+        },
+        "lower_layer_pass_evidence": [],
+        "minimal_repair_context": {
+          "deferred_flow_actions": [
+            {
+              "acceptance_checkers": [
+                "case_board_interface_discovery",
+                "case_multilayer_pipeline",
+                "case_axi_ddr_interface",
+                "real_tool.case_vcs_functional_sim",
+                "functional_sim",
+                "required_real_tool_evidence_check",
+                "verification_action_audit_check",
+                "stage_artifact_trust_barrier_check"
+              ],
+              "action_type": "current_layer_compile_only_verification",
+              "consumes": [
+                "current exact-board discovery context record",
+                "artifact.stage5.verification_artifact_contract",
+                "artifact.stage5.llm_action_audit",
+                "current hardware source manifest and hashes",
+                "exact discovered sample-project wrapper and simulation sources",
+                "current-stage trust and retry reconciliation evidence"
+              ],
+              "id": "debug_loop.retry_stage6_compile_only_after_discovery",
+              "on_failure": "Remain in debug_loop at board_axi_ddr_wrapped_system. If discovery is still blocked, request another bounded observation plan; if current-source VCS reports actual compiler, elaboration, or link errors, localize the earliest board-layer causal boundary and perform only an evidence-supported bounded repair before rerunning the same layer. Do not promote, run backend_board, or backtrack to code_generation or parameter_binding.",
+              "produces": [
+                "current-source VCS compile/elaboration/link evidence",
+                "updated Stage-6 board-interface, multilayer, AXI/DDR, and compile-only gate reports",
+                "new unpromoted Stage-6 verification result or a localized current-layer failure record"
+              ],
+              "rationale": "After the new observation establishes a ready exact-board contract, retry the same board_axi_ddr_closure layer in the registered bottom-up compile-only path. Acceptance requires current-source VCS compilation, elaboration, and linking; runtime execution, golden comparison, waveform generation, and weight loading are not prerequisites.",
+              "requires_approval": false,
+              "stage": "debug_loop",
+              "tool_roles": [
+                "case_board_interface_discovery",
+                "case_multilayer_pipeline",
+                "case_axi_ddr_interface",
+                "case_vcs_functional_sim",
+                "case_vcs_evidence_analyzer"
+              ]
+            }
+          ],
+          "flow_action_id": "debug_loop.observe_board_interface_current_epoch",
+          "flow_action_type": "targeted_current_layer_observation",
+          "preflight_flow_actions": [],
+          "trace_record": {}
+        },
+        "reason": "The previous replay did not isolate the current failure and used an empty stage_id. Perform a non-identical current-epoch observation focused on exact sample-project source context and the host/output-path control boundary. This distinguishes missing catalog context, absent exclusive compute-slot ownership, and malformed selector output without guessing a target or editing hardware.",
+        "scope": "debug_trace_rerun",
+        "source": "flow_controller_handoff",
+        "targeted_replay_plan": {
+          "distinguishes": "The observation must report which exact artifact or boundary supports each alternative and must not substitute the shell cell for a compute slot. It is a new effective trace environment and a new current-stage identity, not a replay of the prior empty-stage-id boundary.",
+          "reason": "repair semantic testbench, loader/weight binding, numeric contract, or checker capability before requesting a hardware boundary trace",
+          "rerun_env": {
+            "SPATIALACC_BOUNDARY_TRACE": "1",
+            "SPATIALACC_TARGETED_REPLAY": "1",
+            "SPATIALACC_TARGETED_TRACE_SCOPE": "board_interface_source_context_and_host_output_path",
+            "SPATIALACC_TARGET_BOUNDARY": "board_wrapper_full_source_context_to_host_output_path_boundary"
+          },
+          "root_cause_alternatives": [
+            "the sample-project wrapper or source context is absent, unknown, or not included in the current discovery input",
+            "Vivado evidence genuinely lacks an exclusive replaceable compute-slot cell or source ownership boundary",
+            "the board-interface selector response schema is malformed, including required_capabilities not being an array"
+          ],
+          "source": "validated_flow_controller_handoff",
+          "stage_id": null,
+          "status": "incomplete",
+          "target_boundary": "board_wrapper_full_source_context_to_host_output_path_boundary"
+        },
+        "tool": "case_leaf_functional",
+        "trace_target_stage_id": null
+      }
+    ]
+  },
+  "schema_version": "spatialaccagent.repair_plan.v0",
+  "stage": "repair",
+  "status": "needs_repair",
+  "verification_status": "fail"
+}

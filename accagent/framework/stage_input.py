@@ -266,7 +266,20 @@ BOARD_PROFILE_SCHEMA = {
         "schema_version": {"type": "string"},
         "board": {"type": "object", "additionalProperties": True},
         "shell": {"type": "object", "additionalProperties": True},
-        "memory_system": {"type": "object", "additionalProperties": True},
+        "memory_system": {
+            "type": "object",
+            "additionalProperties": True,
+            "properties": {
+                "axi_data_width_bits": {
+                    "type": ["integer", "null"],
+                    "description": "Accelerator-facing AXI/refill width used by pipeline and DSE, after any required board-boundary width conversion; retain physical interface widths separately.",
+                },
+                "axi_data_bytes": {"type": ["integer", "null"], "description": "Bytes per accelerator-facing AXI/refill beat."},
+                "ddr_channels": {"type": ["integer", "null"]},
+                "hbm_channels": {"type": ["integer", "null"]},
+            },
+            "required": ["axi_data_width_bits", "axi_data_bytes"],
+        },
         "runtime_interface": {"type": "object", "additionalProperties": True},
         "board_pass_criteria": {"type": "object", "additionalProperties": True},
         "notes": {"type": "array", "items": {"type": "string"}},
@@ -1941,6 +1954,10 @@ def prepare_board_profile(board_summary: dict[str, Any], field_evidence_summary:
             "The downstream accelerator must keep DDR/AXI-compatible board flow, so DDR channels, AXI width, control protocol, runtime command, remote host, and FPGA part are critical.",
             "Put all FPGA board, shell, memory, runtime, and pass/fail fields inside the schema sections.",
             "Use null for unknown board facts and record uncertainty in notes.",
+            "Retain every source-backed named memory interface, channel count, width, and clock/reset domain in the evidence, including structured values; a missing legacy flat field is not evidence that an interface is unknown.",
+            "Keep each physical memory interface separate from any logical accelerator refill interface. Use the exact keys memory_system.axi_data_width_bits and memory_system.axi_data_bytes for the selected accelerator-facing interface, not renamed canonical_* aliases. Identify that choice and retain the physical interface facts and any required width/clock conversion separately. Use ddr_channels for DDR or hbm_channels for HBM rather than relabeling one memory technology as another.",
+            "Downstream pipeline and DSE use memory_system.axi_data_width_bits and memory_system.axi_data_bytes as the accelerator-facing refill width. When the supplied design binding explicitly preserves a logical core refill width behind a board-boundary adapter, use that logical width for these two fields; record physical memory port widths separately and describe required width/clock adaptation as pending implementation, not as already verified. Do not narrow core stream lanes to a narrower physical port merely because conversion is required. Without an explicit logical binding, use the evidenced accelerator-facing physical width.",
+            "A control protocol can be established by the reference RTL without a host runtime command. Do not invent a board_run_command when only compile-only validation is requested.",
             "Do not invent resource numbers that are not present in the source information.",
             "If sample projects or scripts imply board flow, use only the summarized evidence and do not repeat long file listings.",
             "Extract runtime ABI fields such as control base, DDR base, output address, device id, runtime directory, image path, board AXI prefix, clock/reset, and calibration signal only when they appear in source evidence.",
@@ -2721,38 +2738,13 @@ def prepare_field_evidence_split_agents(
 
 
 def prompt_field_evidence_summary(field_evidence: dict[str, Any]) -> dict[str, Any]:
-    selected_fields = [
-        "board.fpga_part",
-        "memory_system.ddr_channels",
-        "memory_system.ddr_word_width_bits",
-        "memory_system.axi_data_width_bits",
-        "memory_system.axi_data_bytes",
-        "memory_system.axi_addr_width_bits",
-        "memory_system.axi_id_width_bits",
-        "memory_system.axi_wstrb_width_bits",
-        "memory_system.core_side_interface_name",
-        "memory_system.axi_clock",
-        "memory_system.axi_reset",
-        "memory_system.calibration_done_signal",
-        "memory_system.real_board_reference_rtl",
-        "runtime_interface.control_protocol",
-        "runtime_interface.board_run_command",
-        "runtime_interface.remote_host",
-        "runtime_interface.mimic_dir",
-        "runtime_interface.xdma_id_default",
-        "runtime_interface.h2c_device_template",
-        "runtime_interface.c2h_device_template",
-        "runtime_interface.ctrl_base",
-        "runtime_interface.ddr_base",
-        "runtime_interface.output_abs",
-        "runtime_interface.ddr_image_default",
-        "tool.vcs.host",
-        "tool.vcs.executable",
-        "tool.vivado.host",
-        "tool.vivado.executable",
-        "numeric_policy.default_precision",
-    ]
-    evidence_items = field_evidence.get("evidence", [])
+    evidence_items = sanitize_llm_payload(field_evidence.get("evidence", []))
+    # The extractor accepts arbitrary source-backed fields. A fixed whitelist
+    # here would silently erase new boards' interface and topology evidence.
+    selected_fields = list(dict.fromkeys(
+        item["field"] for item in evidence_items
+        if isinstance(item, dict) and isinstance(item.get("field"), str)
+    ))
     summary = {
         "schema_version": "spatialaccagent.field_evidence_summary.v0",
         "policy": field_evidence.get("policy", {}),
@@ -3304,7 +3296,7 @@ def prepare_tool_protocols(
         case_tool("vivado_synthesis", env=vivado_env),
         case_tool("vivado_implementation", env=vivado_env),
         case_tool("runtime_bitstream"),
-        structured_command(name="board_runtime", kind="board_runtime", scope="board", argv=shlex.split(board.get("runtime_interface", {}).get("board_run_command") or ""), cwd=Path.cwd(), required=True),
+        structured_command(name="board_runtime", kind="board_runtime", scope="board", argv=shlex.split(board.get("runtime_interface", {}).get("board_run_command") or ""), cwd=Path.cwd(), required=active_verification_policy() != COMPILE_ONLY_POLICY),
     ]
     protocols = {
         "schema_version": "spatialaccagent.tool_protocols.v0",
@@ -3418,12 +3410,16 @@ def validate_inputs(items: dict[str, dict[str, Any]]) -> tuple[list[str], list[s
         errors.append("target_board_profile missing board.fpga_part")
 
     memory = board.get("memory_system", {})
-    for field in ["ddr_channels", "ddr_word_width_bits", "axi_data_bytes"]:
-        if memory.get(field) in {None, "", 0}:
-            errors.append(f"target_board_profile.memory_system missing {field}")
+    channel_fields = ("ddr_channels", "hbm_channels", "hbm_pseudo_channels", "channels")
+    if not any((maybe_int(memory.get(field)) or 0) > 0 for field in channel_fields):
+        errors.append("target_board_profile.memory_system missing memory channel count")
+    if not any((maybe_int(memory.get(field)) or 0) > 0 for field in ("ddr_word_width_bits", "axi_data_width_bits")):
+        errors.append("target_board_profile.memory_system missing memory word/AXI width")
+    if memory.get("axi_data_bytes") in {None, "", 0}:
+        errors.append("target_board_profile.memory_system missing axi_data_bytes")
 
     runtime = board.get("runtime_interface", {})
-    if not runtime.get("board_run_command"):
+    if active_verification_policy() != COMPILE_ONLY_POLICY and not runtime.get("board_run_command"):
         errors.append("target_board_profile.runtime_interface missing board_run_command")
     if not runtime.get("control_protocol"):
         errors.append("target_board_profile.runtime_interface missing control_protocol")

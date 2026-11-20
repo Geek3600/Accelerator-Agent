@@ -1,0 +1,387 @@
+{
+  "checker_results": [
+    {
+      "checker": "operator_coverage_check",
+      "errors": [],
+      "evidence": {
+        "missing_ops": [],
+        "required_ops": 8
+      },
+      "status": "pass",
+      "warnings": []
+    },
+    {
+      "checker": "template_parameter_binding_check",
+      "errors": [],
+      "evidence": {
+        "binding_count": 11
+      },
+      "status": "pass",
+      "warnings": []
+    },
+    {
+      "checker": "template_source_and_interface_check",
+      "errors": [],
+      "evidence": {
+        "checked_templates": 11
+      },
+      "status": "pass",
+      "warnings": []
+    },
+    {
+      "checker": "mandatory_fpga_ip_binding_check",
+      "errors": [],
+      "evidence": {
+        "checked_source_hashes": {
+          "Activation.scala": "c77e42c70db8b3fb74c9563970edc90cd3a79a144d959eaa8a253008ae5f24ce",
+          "Attention.scala": "235d1e5ef212b225c5ce487701f4524874e3a9021a0447818c1ef22efbf351b7",
+          "Common.scala": "f358026cf47764dcc732f6c8550b17ab759d089bc9ad6cccbca814143e899b73",
+          "DecoderBlock.scala": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+          "Elementwise.scala": "53f25bee2ff7dc030db606d1842a45ddd856b475c388ee82d6260779d4ec8870",
+          "FFN.scala": "1896b7ea12ac548124a1a25266baa7d9ea087af21ee60d57633f6843db91a58c",
+          "KVCache.scala": "727e172cfdfe380e30b9976ef77c443086ef088427eef31a84aa3a9e0da20069",
+          "Linear.scala": "dfa73bb0ba5896bd9e982ebefa41fced0707bdb5a959f24df435229567c7c033",
+          "Mask.scala": "bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a",
+          "Norm.scala": "f3319af0d66c9e8c19e7cc789b9fc5799b62e0ad49811ef7da43ceb6dc2eeddf",
+          "PhysicalResources.scala": "096fb1bd1d9fbb9bef23f48550425b4b403f2b7eb14be6bb23cff649bb5c7395",
+          "QKVProjection.scala": "2d4ee98fb337e9c54b080a7de1f35ffa8dd1d9304de973bd7587b35044a4e82a",
+          "Residual.scala": "8bef8dac50264c2278438a18e5be48328ed1fd1bfb3f9bbee3c522f11258aca3",
+          "RoPE.scala": "ad42db5781d4f0906d4f28864570fc72f3763f94926144dc5a27275f129209f8",
+          "Softmax.scala": "4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2",
+          "WeightTileCache.scala": "ba0f85a03ce3ff2fd56fc28f07ed40ce6ce1327508222fe67b64d32108156873"
+        },
+        "checked_sources": [
+          "Activation.scala",
+          "Attention.scala",
+          "Common.scala",
+          "DecoderBlock.scala",
+          "Elementwise.scala",
+          "FFN.scala",
+          "KVCache.scala",
+          "Linear.scala",
+          "Mask.scala",
+          "Norm.scala",
+          "PhysicalResources.scala",
+          "QKVProjection.scala",
+          "Residual.scala",
+          "RoPE.scala",
+          "Softmax.scala",
+          "WeightTileCache.scala"
+        ],
+        "errors": [],
+        "physical_resource_source": "/home/remote/workspace/Qwen2-Accelerator/accagent/framework/templates/operator_chisel/PhysicalResources.scala",
+        "required_bindings": {
+          "activations": "XPM BRAM",
+          "arithmetic": "signed integer DSP MAC/reduction inference",
+          "fifo": "XPM BRAM",
+          "large_cache": "XPM URAM",
+          "weights": "XPM URAM"
+        },
+        "schema_version": "spatialaccagent.fpga_ip_contract.v1",
+        "simulation": {
+          "behavioral_fallback_allowed": false,
+          "compute_models": "signed integer DSP arithmetic inferred from current Chisel sources; no floating-point IP",
+          "memory_models": "Xilinx XPM simulation library",
+          "required_libraries": [
+            "unisims_ver",
+            "xpm"
+          ],
+          "required_sources": [
+            "glbl.v",
+            "XPM simulation sources"
+          ],
+          "same_interface_and_cycle_latency_as_implementation": true,
+          "same_module_names_as_implementation": true
+        },
+        "status": "pass",
+        "violations": []
+      },
+      "status": "pass",
+      "warnings": []
+    },
+    {
+      "checker": "attention_semantic_expansion_check",
+      "errors": [],
+      "evidence": {
+        "components": [
+          {
+            "component": "qkv_projection",
+            "evidence_pattern": "Module(new QKVProjection",
+            "evidence_type": "hash_bound_template_source",
+            "required": true,
+            "source": "DecoderBlock.scala",
+            "source_sha256": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+            "status": "covered"
+          },
+          {
+            "activation_policy": "template support alone is not activation; no rotary path may be bound when the model positional encoding is not rope",
+            "component": "rope",
+            "evidence_pattern": "Module(new RoPE",
+            "evidence_type": "hash_bound_template_source",
+            "model_position_encoding_type": "learned_absolute",
+            "required": false,
+            "source": "DecoderBlock.scala",
+            "source_sha256": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+            "status": "not_applicable"
+          },
+          {
+            "component": "gqa_head_mapping",
+            "evidence_pattern": "kvGroupSize",
+            "evidence_type": "hash_bound_template_source",
+            "gqa_group_size": 1,
+            "params": {
+              "num_kv_heads": 16,
+              "num_q_heads": 16
+            },
+            "required": false,
+            "source": "QKVProjection.scala",
+            "source_sha256": "2d4ee98fb337e9c54b080a7de1f35ffa8dd1d9304de973bd7587b35044a4e82a",
+            "status": "covered"
+          },
+          {
+            "component": "softmax",
+            "evidence_pattern": "template_id=softmax",
+            "evidence_type": "hash_bound_template_source",
+            "required": true,
+            "source": "Softmax.scala",
+            "source_sha256": "4f68287b82eab429fa5da62a9d8f3fd1a537f00ef42e364f411e7dd3537e94f2",
+            "status": "covered"
+          },
+          {
+            "component": "output_projection",
+            "evidence_pattern": "val outputProjection = Module(new Linear(p.outLinear))",
+            "evidence_type": "hash_bound_template_source",
+            "required": true,
+            "source": "Attention.scala",
+            "source_sha256": "235d1e5ef212b225c5ce487701f4524874e3a9021a0447818c1ef22efbf351b7",
+            "status": "covered"
+          },
+          {
+            "component": "kv_cache",
+            "evidence_pattern": "Module(new KVCache",
+            "evidence_type": "hash_bound_template_source",
+            "required": false,
+            "source": "DecoderBlock.scala",
+            "source_sha256": "ec517051054fb006bd56e9012481f6b412cff3834ba98e4bfe66539b3cecf785",
+            "status": "not_required"
+          },
+          {
+            "component": "causal_mask",
+            "evidence_pattern": "template_id=mask",
+            "evidence_type": "hash_bound_template_source",
+            "required": true,
+            "source": "Mask.scala",
+            "source_sha256": "bfb70e48641d60c25100b8240d5fef461aa954847c5fe5777b7fbb5445fc0e0a",
+            "status": "covered"
+          }
+        ],
+        "required": true
+      },
+      "status": "pass",
+      "warnings": []
+    },
+    {
+      "checker": "cross_layer_trace_check",
+      "errors": [],
+      "evidence": {
+        "constraints": [
+          {
+            "constraint": "constraint.numeric.policy",
+            "fact_keys": [
+              "_llm_provenance",
+              "_numeric_comparison_resolution",
+              "default_rules",
+              "notes",
+              "policy_id",
+              "schema_version",
+              "tolerance"
+            ],
+            "present": true
+          },
+          {
+            "constraint": "constraint.memory.board",
+            "fact_keys": [
+              "memory_system"
+            ],
+            "present": true
+          },
+          {
+            "constraint": "constraint.runtime.board",
+            "fact_keys": [
+              "board_axi_prefix",
+              "clock",
+              "control_protocol",
+              "control_protocol_evidence",
+              "host_path_established",
+              "output_write_path_established",
+              "reset",
+              "reset_polarity",
+              "source_evidence"
+            ],
+            "present": true
+          },
+          {
+            "constraint": "constraint.deployment.board",
+            "fact_keys": [
+              "board",
+              "board_pass_criteria",
+              "shell"
+            ],
+            "present": true
+          },
+          {
+            "constraint": "constraint.cross_layer.input_consistency",
+            "fact_keys": [
+              "acceptance_boundary",
+              "board",
+              "conflict_rules",
+              "evidence_by_field",
+              "evidence_fields",
+              "field_resolution",
+              "materials",
+              "model",
+              "numeric_policy",
+              "tools"
+            ],
+            "present": true
+          }
+        ],
+        "status": "pass"
+      },
+      "status": "pass",
+      "warnings": []
+    }
+  ],
+  "design_team": {
+    "aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/template_selection/team/team_aggregate.json",
+    "approval_required_for": [],
+    "completed_subtasks": 0,
+    "decomposer_error": null,
+    "decomposer_used_fallback": false,
+    "decomposition_source": "llm",
+    "errors": [],
+    "event_log": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/template_selection/team/event_log.jsonl",
+    "executable_actions": [],
+    "execution_groups": [],
+    "llm_io_metrics": {
+      "executable_action_count": 0,
+      "max_duration_sec": 0.0,
+      "max_prompt_bytes": 0,
+      "result_count": 0,
+      "subtasks_without_executable_actions": [],
+      "total_duration_sec": 0,
+      "total_prompt_bytes": 0
+    },
+    "split_required": false,
+    "status": "no_split",
+    "subtask_count": 0,
+    "subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/template_selection/team/subtask_plan.json",
+    "used_fallback_count": 0
+  },
+  "errors": [],
+  "llm_agent": {
+    "agent": "template_selection_agent",
+    "approval_required_for": [],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "parameter_binding_static_check",
+          "template_binding_static_check"
+        ],
+        "action_type": "stage_handoff",
+        "consumes": [
+          "candidate_template_selection.parameter_bindings",
+          "candidate_template_selection.supported_bindings",
+          "candidate_template_selection.fpga_ip_contract.checked_source_hashes"
+        ],
+        "id": "template_selection.handoff_validated_domains_to_stage4_dse",
+        "on_failure": "Keep the validated Stage 2 candidate domains and immutable source identity unchanged; report any demonstrated legality inconsistency for bounded Stage 4 resolution, and do not substitute constructor defaults or select values in this stage.",
+        "produces": [
+          "artifact.stage4.dse_candidate_selection"
+        ],
+        "rationale": "Stage 2 has validated the complete legal candidate domains. Stage 4 is the designated authority for selecting concrete DSE values.",
+        "requires_approval": false,
+        "stage": "template_selection",
+        "tool_roles": [
+          "architecture_review"
+        ]
+      }
+    ],
+    "observations": [
+      "Operator coverage, template parameter binding, template source/interface, mandatory FPGA-IP binding, attention semantic expansion, and cross-layer trace checkers all pass with no errors or warnings.",
+      "All required decoder-block parameters are bound or legal candidate_bound values; the legal lanes, compute_array_rows, and compute_array_cols domains are validated and await Stage 4 DSE selection.",
+      "Attention coverage is evidenced by hash-bound QKV projection, softmax, output projection, and causal mask sources. RoPE is correctly not applicable for learned_absolute position encoding; KV cache is not required; equal Q/KV head counts are covered.",
+      "The checked source hashes, including current source_sha256 and checked_source_hashes, are treated as immutable identity for this review.",
+      "The design-team artifact reports no_split with no errors or executable subtask output; it provides no concrete contradiction to the candidate selection.",
+      "SACG memory truth has no active contamination barriers or open retry/backtrack requests."
+    ],
+    "proposed_actions": [
+      "At Stage 4, select lanes, compute_array_rows, and compute_array_cols from their validated candidate_bound domains; do not treat their pending selection as a Stage 2 blocker.",
+      "Plan later verification using the existing bottom-up compile-only VCS layer tools; acceptance requires current-source VCS compilation, elaboration, and linking, not simulator execution or numerical comparison.",
+      "Defer final code generation, Vivado synthesis/implementation, and runtime/board integration to their designated later stages."
+    ],
+    "risks": [],
+    "sacg_focus": {
+      "artifacts": [
+        "candidate_template_selection",
+        "template_source_checks",
+        "fpga_ip_contract",
+        "design_team",
+        "sacg_memory_truth"
+      ],
+      "constraints": [
+        "constraint.model.decoder",
+        "constraint.shape.model",
+        "constraint.numeric.policy",
+        "constraint.template.library",
+        "constraint.arch.design_space",
+        "constraint.deployment.board",
+        "constraint.memory.board",
+        "constraint.runtime.board",
+        "constraint.cross_layer.input_consistency"
+      ],
+      "edges": [
+        "decoder_block -> operator_sequence",
+        "self_attention -> attention_semantics",
+        "selected_templates -> mandatory_fpga_ip_bindings",
+        "template_selection -> cross_layer_trace"
+      ],
+      "nodes": [
+        "template_selection",
+        "decoder_block",
+        "self_attention",
+        "fpga_ip_contract",
+        "cross_layer_trace"
+      ]
+    },
+    "schema_version": "spatialaccagent.template_selection_review.v1",
+    "stage": "template_selection",
+    "status": "ready",
+    "summary": "All supplied deterministic Stage 2 checks pass, with no concrete current-evidence contradiction. Template coverage, parameter binding, source/interface checks, attention semantics, FPGA-IP bindings, and cross-layer trace are closed."
+  },
+  "missing_ops": [],
+  "outputs": {
+    "llm_agent": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/template_selection/llm/template_selection_agent_result.json",
+    "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/template_selection/sacg_state.json",
+    "team_aggregate": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/template_selection/team/team_aggregate.json",
+    "team_subtask_plan": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/template_selection/team/subtask_plan.json",
+    "template_selection": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/template_selection/template_selection.json"
+  },
+  "required_adapters": [],
+  "sacg_transition_id": "transition.0001",
+  "schema_version": "spatialaccagent.template_selection_report.v0",
+  "selected_template_ids": [
+    "activation",
+    "attention",
+    "decoder_block",
+    "ffn",
+    "mask",
+    "norm",
+    "residual",
+    "softmax"
+  ],
+  "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/constraint_extraction/initial_design_graph.json",
+  "stage": "template_selection",
+  "status": "ready",
+  "unsupported_bindings": []
+}

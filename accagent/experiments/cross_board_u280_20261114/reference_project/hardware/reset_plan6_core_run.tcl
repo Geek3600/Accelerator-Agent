@@ -1,0 +1,3 @@
+open_project /home/hyyuan/workspace/rtwsr_plan6_huginn_vu9p_shell_20261025_fixplan_p2_default/app_shell_9p.xpr
+reset_run app_shell_9p_rtwsr_9p_axi_0_6_synth_1
+close_project

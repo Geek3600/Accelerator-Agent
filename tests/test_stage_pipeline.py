@@ -1,12 +1,15 @@
 import json
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
+from unittest.mock import patch
 
 from accagent.framework.stage_pipeline import (
     PipelinePlanningError,
     board_axi_contract,
     build_pipeline_plan,
+    check_memory_runtime_contract,
     normalize_attention_contract,
     symbolic_latency,
 )
@@ -219,6 +222,63 @@ class SemanticPipelinePlanTest(TestCase):
             self.assertEqual(board_axi_contract(state)["core_side_interface_name"], "user_declared_ddr_axi_")
             from accagent.framework.stage_params import board_axi
             self.assertEqual(board_axi(state)["core_side_interface_name"], "user_declared_ddr_axi_")
+
+    def test_board_axi_accepts_accelerator_facing_interface_name(self) -> None:
+        with TemporaryDirectory() as temp:
+            state = state_for("gpt2", Path(temp))
+            memory = next(c["facts"] for c in state["constraints"] if c["id"] == "constraint.memory.board")
+            system = memory.get("memory_system", memory)
+            system.pop("core_side_interface_name", None)
+            system.pop("ddr_channel_prefix", None)
+            system["accelerator_facing_interface"] = {"name": "logical_core_refill"}
+
+            self.assertEqual(board_axi_contract(state)["core_side_interface_name"], "logical_core_refill")
+            from accagent.framework.stage_params import board_axi
+            self.assertEqual(board_axi(state)["core_side_interface_name"], "logical_core_refill")
+
+    def test_compile_only_memory_contract_does_not_require_host_device_paths(self) -> None:
+        with TemporaryDirectory() as temp:
+            state = state_for("gpt2", Path(temp))
+            memory = next(c["facts"] for c in state["constraints"] if c["id"] == "constraint.memory.board")
+            system = memory.get("memory_system", memory)
+            system.pop("core_side_interface_name", None)
+            system.pop("ddr_channel_prefix", None)
+            system["accelerator_facing_interface"] = {"name": "logical_core_refill"}
+            runtime = next(c["facts"] for c in state["constraints"] if c["id"] == "constraint.runtime.board")
+            runtime.clear()
+            runtime["control_protocol"] = "AXI-Lite"
+            plan = build_pipeline_plan(state)
+            requirements = plan["memory_schedule"]["runtime_config_requirements"]
+            requirements["h2c_device_template"] = None
+            requirements["c2h_device_template"] = None
+
+            with patch.dict(os.environ, {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}):
+                result = check_memory_runtime_contract(plan)
+
+            self.assertEqual(result["status"], "pass")
+
+    def test_full_runtime_memory_contract_still_requires_host_device_paths(self) -> None:
+        with TemporaryDirectory() as temp:
+            state = state_for("gpt2", Path(temp))
+            runtime = next(c["facts"] for c in state["constraints"] if c["id"] == "constraint.runtime.board")
+            runtime.clear()
+            runtime["control_protocol"] = "AXI-Lite"
+            plan = build_pipeline_plan(state)
+            requirements = plan["memory_schedule"]["runtime_config_requirements"]
+            requirements["h2c_device_template"] = None
+            requirements["c2h_device_template"] = None
+
+            with patch.dict(os.environ, {"SPATIALACC_VERIFICATION_POLICY": "full_semantic_simulation"}):
+                result = check_memory_runtime_contract(plan)
+
+            self.assertEqual(result["status"], "fail")
+            self.assertEqual(
+                result["errors"],
+                [
+                    "runtime_config_requirements missing h2c_device_template",
+                    "runtime_config_requirements missing c2h_device_template",
+                ],
+            )
 
     def test_w4a8_streams_requantize_without_narrowing_mac_accumulators(self) -> None:
         for family in ("gpt2", "qwen2", "llama"):

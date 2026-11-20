@@ -1,4 +1,4 @@
-\documentclass[conference]{IEEEtran}
+\documentclass[9pt,conference]{IEEEtran}
 \IEEEoverridecommandlockouts
 % The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
 %Template version as of 6/27/2024
@@ -20,7 +20,7 @@
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 \begin{document}
 
-\title{ACCORD: Contract-Guided Agentic Design of FPGA Spatial Accelerators for LLMs\\
+\title{ACCORD: Dependency-Aware Multi-Agent Framework for End-to-End FPGA Spatial Accelerator Design for LLMs\\
 }
 
 % \author{\IEEEauthorblockN{1\textsuperscript{st} Given Name Surname}
@@ -64,11 +64,11 @@
 
 \looseness=-1
 \begin{abstract}
-Automating end-to-end FPGA spatial accelerator design for large language model (LLM) inference is challenging because architectural choices, RTL structures, and physical constraints are tightly coupled across design stages. While compiler frameworks provide structured state management, they are restricted to predefined templates and static rules. Conversely, LLM-based agents offer flexible code adaptation and tool use, but rely on fragile interaction histories—easily breaking cross-stage consistency during forward design and falling into prolonged local symptom repair upon late-stage failures. We propose ACCORD, a multi-agent framework that unites compiler-like structured design state management with flexible agentic adaptation via contract-preserving, evidence-backed state transitions. At the core of ACCORD is a Design Contract Graph (DCG) linking cross-stage invariants, design artifacts, and revision-bound validation evidence. Guided by the DCG, agents design spatial accelerators from extensible templates, explore hardware-bound configurations, generate RTL, and iteratively refine implementations with tool feedback—enforcing forward constraint propagation, backward root-cause tracing, and targeted revalidation. Across diverse LLM workloads and FPGAs, ACCORD improves end-to-end closure rates by [X\%] over agentic baselines, reduces repair overhead by [Y]x, and achieves up to [Z]x higher throughput/resource efficiency than spatial compiler frameworks.
+Automating end-to-end FPGA spatial accelerator design for large language model (LLM) inference is challenging because architectural choices, RTL structures, and physical constraints are tightly coupled across design stages. While compiler frameworks provide structured state management, they are restricted to predefined templates and static rules. Conversely, LLM-based agents offer flexible code adaptation and tool use, but rely on fragile interaction histories—easily breaking cross-stage consistency during forward design and falling into prolonged local symptom repair upon late-stage failures. We propose ACCORD, a multi-agent framework that unites compiler-like structured design state management with flexible agentic adaptation via dependency-aware design state management. At the core of ACCORD is a Design Dependency Graph (DDG) linking cross-stage invariants, design artifacts, and versioned verification and EDA results. Guided by the DDG, agents design spatial accelerators from extensible templates, explore hardware-bound configurations, generate RTL, and iteratively refine implementations with tool feedback—enforcing forward constraint propagation, backward root-cause tracing, and incremental revalidation. Across diverse LLM workloads, ACCORD 
 \end{abstract}
 
 \begin{IEEEkeywords}
-FPGA spatial accelerator, large language model inference, multi-agent hardware design, design contract graph, cross-stage consistency, root-cause tracing.
+FPGA spatial accelerator, large language model inference, multi-agent hardware design, Design Dependency Graph, cross-stage consistency, root-cause tracing.
 \end{IEEEkeywords}
 
 \begin{figure*}[t!]
@@ -80,27 +80,27 @@ FPGA spatial accelerator, large language model inference, multi-agent hardware d
 
 \section{Introduction}
 \looseness=-1
-The growing computational and memory bandwidth demands of large language model (LLM) inference have propelled the adoption of spatial dataflow architectures on FPGAs~\cite{streamtensor}. By streaming intermediate data across spatially co-existing compute nodes, these architectures minimize off-chip memory traffic and maximize pipeline parallelism. However, implementing a timing-closed FPGA spatial accelerator remains challenging. Because spatial nodes are tightly coupled through streaming protocols, throughput rates, and shared on-chip resources (e.g., DSPs, BRAMs, and routing), architectural choices, RTL micro-architectures, and physical constraints are deeply intertwined. Upstream decisions—such as tiling dimensions or unroll factors—strictly constrain downstream memory banking and handshake interfaces, while downstream physical violations—such as routing congestion—frequently force designers to backtrack and restructure the upstream design, demanding exhaustive manual iterations.
+The growing computational and memory bandwidth demands of large language model (LLM) inference have propelled the adoption of spatial dataflow architectures on FPGAs~\cite{streamtensor}. By streaming intermediate data across spatially parallel compute nodes, these architectures minimize off-chip memory traffic and maximize pipeline parallelism. However, designing and implementing an efficient end-to-end FPGA spatial accelerator remains challenging. Because spatial nodes are tightly coupled through streaming interfaces, producer–consumer rates, and on-chip resources (e.g., DSPs, BRAMs, and routing), architectural choices, RTL micro-architectures, and physical constraints are deeply intertwined. Even a single upstream design decision—such as an unroll factor—can have cascading effects on downstream architectural design, RTL coding, and physical implementation, while downstream physical violations—such as routing congestion—frequently force designers to backtrack and restructure the upstream design. Maintaining this cross-stage consistency demands exhaustive manual iterations.
 
 \looseness=-1
-Existing automation paradigms struggle to simultaneously achieve design flexibility and cross-stage consistency. Compiler- and high-level synthesis (HLS)-based frameworks, such as Allo~\cite{allo}, StreamHLS~\cite{streamhls}, and StreamTensor~\cite{streamtensor}, inherently provide structured design state management through well-defined intermediate representations (IRs) and transformation passes. However, their design space is restricted to predefined rules, limiting their ability to implement custom micro-architectural optimizations (e.g., custom mixed-precision or irregular dataflow fusion) or restructure designs beyond built-in transformations. Conversely, leveraging broad parametric knowledge and tool use, LLM-based agents offer open-ended generative flexibility across RTL generation and debugging~\cite{mage,rtlfixer}, verification~\cite{assertllm,correctbench}, HLS pragma tuning~\cite{hlspilot}, and accelerator-level design~\cite{mahl,gpt4aigchip,designconductor2}. However, unlike compilers, existing agents lack explicit, structured design state management. Relying on unstructured interaction histories, they often make unconstrained local edits without enforcing system-wide invariants, easily breaking cross-stage consistency, when modifying individual components.
+To alleviate the complexity of end-to-end FPGA spatial accelerator design, prior research has explored two major automation paradigms: compiler-based frameworks and LLM-based agents. However, both paradigms struggle to simultaneously achieve design flexibility and cross-stage consistency. Compiler- and high-level synthesis (HLS)-based frameworks, such as Allo~\cite{allo}, StreamHLS~\cite{streamhls}, and StreamTensor~\cite{streamtensor}, inherently provide structured design state management through well-defined intermediate representations (IRs) and transformation passes, enabling efficient end-to-end design of FPGA spatial accelerators. However, their design space is restricted to predefined rules, limiting their ability to implement custom micro-architectural optimizations (e.g., custom mixed-precision or irregular dataflow fusion) or restructure designs beyond built-in transformations. Conversely, by leveraging broad parametric knowledge and tool use, LLM-based agents offer open-ended generative flexibility across RTL generation and debugging~\cite{mage,rtlfixer}, verification~\cite{assertllm,correctbench}, HLS pragma tuning~\cite{hlspilot}, and accelerator-level design~\cite{mahl,gpt4aigchip,designconductor2}. However, unlike compilers, existing agents lack explicit, structured design state management. Relying on unstructured interaction histories, they often make unconstrained local edits without maintaining system-wide invariants, easily breaking cross-stage consistency leading to interface mismatches, system-level integration failures, and costly design rework.
 
 \looseness=-1
-Achieving end-to-end agentic FPGA spatial accelerator design requires not only automating individual design stages, but also maintaining global design validity as decisions evolve across stages. Because upstream architectural choices constrain multiple downstream stages and physical feedback often forces cross-stage revisions, passing isolated stage-level checks neither guarantees functional composability across streaming nodes nor ensures physical feasibility on FPGAs. This raises a fundamental question: \textbf{How can we maintain a globally verifiable design state throughout an iterative, multi-stage, agent-driven hardware design process under strict physical constraints?} Addressing this question entails resolving two core challenges:
+The key to achieving end-to-end agentic FPGA spatial accelerator design lies not in treating individual design stages as isolated tasks, but in keeping their evolving design states aligned throughout the entire design process. Because upstream architectural choices typically constrain multiple downstream stages and physical feedback often forces cross-stage revisions, isolated stage-level checks cannot guarantee the final correctness and feasibility of the integrated design. This raises a fundamental question: \textbf{How can we maintain a globally verifiable design state throughout an iterative, multi-stage, agent-driven hardware design process under strict physical constraints?} Addressing this question entails resolving two core challenges:
 \looseness=-1
 \begin{itemize}
-\item \textbf{Preserving multi-level structural and behavioral consistency during forward design.} Early architectural decisions—spanning tensor partitioning, data-packing formats, and inter-node throughput ratios—impose strict invariants on downstream RTL/HLS implementation and testbench generation. When agents rely solely on lengthy, unstructured context histories~\cite{lostmiddle,longbench,locomo}, these cross-stage constraints inevitably drift across multi-stage design process, yielding locally valid modules that fail to compose due to banking conflicts, protocol mismatches, or rate imbalances.
+\item \textbf{Preserving multi-level structural and behavioral consistency during forward design.} Early architectural decisions—spanning tensor partitioning, data-packing formats, and inter-node throughput ratios—impose strict invariants on downstream RTL/HLS implementation and testbench generation. When agents rely solely on lengthy, unstructured context histories, these cross-stage constraints inevitably drift across multi-stage design process~\cite{lostmiddle,longbench,locomo}, yielding locally valid modules that fail to integrate due to banking conflicts, interfaces mismatches, or rate imbalances.
 \looseness=-1
-\item \textbf{Attributing downstream failures to cross-stage root causes without prolonged repair.} Verification mismatches or physical failures (e.g., timing violations, resource overflow, or FIFO deadlocks) frequently stem from upstream architectural bottlenecks rather than local bugs. Without explicit dependency tracing, agents often fall into local symptom repair~\cite{swesearch}—repeatedly patching individual modules while ignoring upstream root causes like excessive spatial parallelism. Worse, ad-hoc local edits (e.g., altering module parameters or interface bitwidths) can break adjacent stages and silently invalidate prior verification evidence, causing prolonged, ineffective repair cycles.
+\item \textbf{Attributing downstream failures to cross-stage root causes without prolonged repair.} Downstream verification mismatches or physical failures (e.g., timing violations, resource overflow, or FIFO deadlocks) frequently stem from incorrect architectural decisions made in earlier design stages. Without explicit design state management to support dependency tracing, agents often fall into local symptom repair~\cite{swesearch}—repeatedly patching individual modules while ignoring upstream root causes. Worse, ad-hoc local edits (e.g., altering module parameters or interface bitwidths) can break cross-module parameter consistency and introduce new errors while fixing existing ones, leading to prolonged, ineffective repair cycles.
 \end{itemize}
 
 \looseness=-1
-To address these challenges, we propose \textbf{ACCORD}, a contract-guided multi-agent framework for end-to-end FPGA spatial accelerator design. ACCORD combines compiler-like structured design state management with the adaptive reasoning and tool-use capabilities of LLM agents by organizing the design process as \emph{contract-preserving, evidence-backed state transitions} over a shared state $S_t=(G_t,A_t,R_t)$. Here, $G_t$ is a \emph{Design Contract Graph (DCG)} capturing architectural, interface, and resource invariants alongside cross-stage dependencies; $A_t$ stores evolving design artifacts; and $R_t$ records revision-bound verification and EDA evidence. Guided by $S_t$, specialized agents construct spatial pipelines from extensible parameterized templates, explore hardware-bound configurations, and iteratively refine implementations with EDA feedback. Upon any design modification, the DCG enforces forward constraint propagation, guides backward root-cause attribution, and invalidates outdated evidence in $R_t$ for targeted revalidation. Our main contributions are:
+To address these challenges, we propose \textbf{ACCORD}, a dependency-aware multi-agent framework for end-to-end FPGA spatial accelerator design. ACCORD combines compiler-like structured design state management with the adaptive reasoning and tool-use capabilities of LLM agents through \emph{dependency-aware design state management} of a shared state $S_t=(G_t,A_t,R_t)$. Here, $G_t$ is a \emph{Design Dependency Graph (DDG)} capturing architectural, interface, and resource invariants alongside cross-stage dependencies; $A_t$ stores evolving design artifacts; and $R_t$ records versioned verification and EDA tool results. Guided by $S_t$, specialized agents construct spatial pipelines from extensible parameterized templates, hardware-feasible design configurations, and iteratively refine implementations with EDA feedback. Upon any design modification, the DDG enforces forward constraint propagation, guides backward root-cause tracing, and invalidates outdated verification results in $R_t$ and triggers incremental revalidation. Our main contributions are:
 \begin{itemize}
-\item \textbf{Contract-preserving agentic design.} We present ACCORD, an end-to-end multi-agent FPGA spatial accelerator framework that unites structured state management with flexible agentic adaptation via contract-preserving, evidence-backed state transitions.
-\item \textbf{Design Contract Graph (DCG) abstraction.} We introduce the DCG to maintain cross-stage invariants—spanning throughput matching, memory banking, streaming protocols, and resource budgets—guiding template binding and safe micro-architectural customization.
-\item \textbf{Dependency-guided repair and closure.} We develop a backward-tracing and evidence-management mechanism that attributes cross-stage failures to upstream root causes, avoids prolonged local repairs, and revalidates affected artifacts.
-\item \textbf{End-to-end evaluation.} Across diverse LLM workloads, hardware configurations, and LLM backbones, ACCORD improves end-to-end closure rates by \textbf{[X\%]} over agentic baselines, reduces repair overhead by \textbf{[Y$\times$]}, and achieves up to \textbf{[Z$\times$]} higher throughput/resource efficiency than spatial compiler frameworks.
+\item \textbf{Dependency-aware multi-agent design.} We present ACCORD, an end-to-end FPGA spatial accelerator design framework that integrates structured, deterministic design state management with flexible LLM-driven architecture exploration, RTL generation, and EDA-guided iterative refinement.
+\item \textbf{Design Dependency Graph (DDG) abstraction.} We introduce the DDG to explicitly model cross-stage design constraints and dependencies among architectural decisions, generated artifacts, and versioned verification results, enabling deterministic constraint checking and consistent propagation of design changes.
+\item \textbf{Dependency-guided repair and closure.} We develop a DDG-based repair mechanism that traces downstream failures to upstream root causes, restricts modifications to the affected design scope, and invalidates outdated verification results for incremental revalidation and design closure.
+\item \textbf{End-to-end evaluation.} Across diverse LLM workloads, hardware configurations, and LLM backbones, ACCORD 
 \end{itemize}
 
 
@@ -115,7 +115,7 @@ To address these challenges, we propose \textbf{ACCORD}, a contract-guided multi
 
 \subsection{FPGA Spatial Accelerators for LLMs}
 \looseness=-1
-FPGA spatial accelerators execute LLM workloads by mapping compute engines, buffers, and memory controllers into a deeply pipelined streaming graph~\cite{streamtensor,allo,streamhls}. Tensors stream directly between spatially co-existing nodes via on-chip FIFOs, minimizing off-chip DRAM traffic. However, implementing such accelerators is challenging because spatial nodes are tightly coupled across structural/protocol alignment, throughput/buffering balance, and global resource/timing constraints. While compiler frameworks (e.g., Allo~\cite{allo}, StreamHLS~\cite{streamhls}, and StreamTensor~\cite{streamtensor}) manage these couplings via structured IRs, their design space is restricted to predefined, static compiler passes and rules.
+FPGA spatial accelerators execute LLM workloads by mapping compute engines, buffers, and memory controllers into a deeply pipelined streaming graph~\cite{streamtensor,allo,streamhls}. Tensors stream directly between spatially co-existing nodes via on-chip FIFOs, minimizing off-chip DRAM traffic. However, implementing such accelerators is challenging because spatial nodes are tightly coupled across structural/protocol alignment, throughput/buffering balance, and global resource and timing constraints. While compiler frameworks (e.g., Allo~\cite{allo}, StreamHLS~\cite{streamhls}, and StreamTensor~\cite{streamtensor}) manage these couplings via structured IRs, their design space is restricted to predefined, static compiler passes and rules.
 
 \subsection{Agentic Hardware Design Automation}
 \looseness=-1
@@ -136,17 +136,17 @@ As shown in Fig.~\ref{fig:motivation} (bottom), failures observed in late design
 \looseness=-1
 \textbf{Design Implications.}
 Overcoming these challenges requires unifying forward design and backward repair over a persistent design state: 
-1) \emph{Explicit cross-stage contracts (Solution 1)}, modeling constraints and dependencies as a graph for automated forward and update propagation; 
+1) \emph{Explicit design constraints and dependencies}, modeling constraints and dependencies as a graph for automated forward and update propagation; 
 2) \emph{Dependency-guided root-cause tracing (Solution 2)}, tracing late-stage failures backward to bound the repair scope; and 
-3) \emph{Revision-bound evidence management}, strictly binding validation results to design revisions to invalidate outdated checks. 
-These principles motivate ACCORD's contract-preserving state model and multi-agent workflow.
+3) \emph{Versioned verification-result tracking}, which associates verification results with specific design revisions to invalidate outdated checks. 
+These principles motivate ACCORD's dependency-aware design state management and multi-agent workflow.
 
 
 \begin{figure*}[t!]
     \centering
     \includegraphics[width=1\linewidth]{pictures/ACCORD_DCG_CrossStage.pdf}
-    \caption{DCG structure and state-transition mechanisms in ACCORD: (a) representative cross-stage dependency subgraph linking decisions, artifacts, and evidence; (b) four-step forward consistency update upon parameter revision; and (c) backward root-cause tracing and scope-bounded repair from downstream tool failures.}
-    \label{fig:dcg}
+    \caption{DDG structure and dependency-driven design updates in ACCORD: (a) cross-stage dependencies among design decisions, artifacts, and verification results; (b) forward propagation of design changes and incremental revalidation; and (c) dependency-guided root-cause tracing and targeted repair.}
+    \label{fig:DDG}
 \end{figure*}
 \section{Method}
 
@@ -155,65 +155,158 @@ These principles motivate ACCORD's contract-preserving state model and multi-age
 Fig.~\ref{fig:workflow} illustrates the overall workflow of ACCORD. Starting from a user request specifying the target LLM, FPGA platform, and design goals, specialized agents first perform \emph{input preparation} by parsing user inputs and retrieving missing model configurations, source code~\cite{transformers}, Hugging Face weights~\cite{huggingface}, and hardware documentation. After an initial specification check for completeness and validity, a top-level controller coordinates specialized agents across an eight-stage pipeline: 
 \emph{(1)~Requirements Specification} and \emph{(2)~Constraint Modeling} formalize model dimensions, numerical policies, and platform resource/timing budgets; 
 \emph{(3)~Template/IP Binding}, \emph{(4)~Spatial Architecture Design}, and \emph{(5)~Design Space Exploration (DSE)} map operators to extensible hardware templates, assemble the streaming pipeline, and optimize parallelism and buffering configurations; 
-finally, \emph{(6)~RTL Generation}, \emph{(7)~Verification \& Repair}, and \emph{(8)~Physical Implementation} generate Chisel-based RTL, support multi-level verification, and invoke Vivado synthesis and timing analysis to assess timing and resource usage.
+finally, \emph{(6)~RTL Generation}, \emph{(7)~Verification \& Repair}, and \emph{(8)~Physical Implementation} generate Chisel-based RTL, execute multi-level functional simulation, and invoke Vivado synthesis and place-and-route for timing and resource closure.
 
 \looseness=-1
-Rather than treating these eight stages as loosely coupled conversational tasks, ACCORD formulates the entire workflow as a sequence of \emph{contract-preserving, evidence-backed state transitions}. At iteration $t$, the global design state is defined as:
+Rather than treating these eight stages as loosely coupled conversational tasks, ACCORD coordinates these stages through \emph{dependency-aware design state management}. At iteration $t$, the global design state is defined as:
 \begin{equation}
 S_t = (G_t, A_t, R_t),
 \end{equation}
-where $G_t$ is a persistent \emph{Design Contract Graph (DCG)} capturing cross-stage invariants and dependencies, $A_t$ stores the materialized design artifacts (e.g., specifications, DSE configurations, and RTL sources), and $R_t$ records verification and EDA implementation evidence strictly bound to specific design revisions. Every agent action is formulated as a proposed state transition $S_t \rightarrow S_{t+1}$, which is committed only if all affected contracts in $G_t$ and required tool checks in $R_t$ are satisfied. By anchoring both forward generation and backward repair on $S_t$, ACCORD maintains global design validity without relying on fragile context histories.
+where $G_t$ is a persistent \emph{Design Dependency Graph (DDG)} capturing cross-stage invariants and dependencies, $A_t$ stores the materialized design artifacts (e.g., specifications, DSE configurations, and RTL sources), and $R_t$ records versioned verification and EDA results. Every agent action is formulated as a proposed state transition $S_t \rightarrow S_{t+1}$, which is committed only if all affected design constraints in $G_t$ and required tool checks in $R_t$ are satisfied. By anchoring both forward generation and backward repair on $S_t$, ACCORD maintains global design validity without relying on fragile context histories.
 
-\subsection{DCG-Based Cross-Stage Consistency}
+\subsection{DDG-Based Cross-Stage Consistency}
 \looseness=-1
 \textbf{Graph structure and linkages.}
-As shown in Fig.~\ref{fig:dcg}(a), the DCG structures cross-stage state by linking three categories of entities across stages: \emph{design decision nodes}, \emph{generated artifacts} ($A_t$), and \emph{validation evidence} ($R_t$). Decision nodes encode stage-specific parameters—spanning model specifications, quantization policies, DSE search spaces, pipeline configurations, memory buffering plans, and streaming interface contracts. Directed edges capture two types of relationships: 
-1)~\emph{contract and artifact dependencies} (solid arrows), which specify how upstream decisions constrain downstream nodes and materialize into concrete code or configuration artifacts; and 
-2)~\emph{invalidation and recheck links} (dashed arrows), which bind artifacts and contracts to their corresponding static, simulation, or physical implementation checks in $R_t$.
+As shown in Fig.~\ref{fig:DDG}(a), the DDG structures cross-stage state by linking three categories of entities across stages: \emph{design decision nodes}, \emph{generated artifacts} ($A_t$), and \emph{verification results} ($R_t$). Decision nodes encode stage-specific parameters—spanning model specifications, quantization policies, DSE search spaces, pipeline configurations, memory buffering plans, and streaming interface contracts. Directed edges capture two types of relationships: 
+1)~\emph{constraint and artifact dependencies} (solid arrows), which specify how upstream decisions constrain downstream nodes and materialize into concrete code or configuration artifacts; and 
+2)~\emph{invalidation and recheck links} (dashed arrows), which bind artifacts and constraints to their corresponding static, simulation, or physical implementation checks in $R_t$.
 
 \looseness=-1
 \textbf{Forward constraint propagation.}
-During forward design, ACCORD traverses the DCG to propagate upstream invariants (e.g., tensor shapes, data-packing formats, and throughput ratios) to downstream stages. Before an agent's output at any stage is accepted into $S_t$, automated contract checkers verify that the proposed parameters and interfaces satisfy all incoming contract edges in $G_t$. Any violation is rejected immediately at the originating stage, preventing misaligned decisions from propagating into downstream RTL generation.
+During forward design, ACCORD traverses the DDG to propagate upstream invariants (e.g., tensor shapes, data-packing formats, and throughput ratios) to downstream stages. Before an agent's output at any stage is accepted into $S_t$, automated constraint checkers verify that the proposed parameters and interfaces satisfy all applicable design constraints encoded in $G_t$. Any violation is rejected immediately at the originating stage, preventing misaligned decisions from propagating into downstream RTL generation.
 
 \looseness=-1
-\textbf{Contract-preserving design updates.}
-When an upstream or intermediate decision is revised—either by user adjustment or iterative refinement—ACCORD executes a four-step update cycle illustrated in Fig.~\ref{fig:dcg}(b): 
+\textbf{Dependency-driven design updates.}
+When an upstream or intermediate decision is revised—either by user adjustment or iterative refinement—ACCORD executes a four-step update cycle illustrated in Fig.~\ref{fig:DDG}(b): 
 \emph{(1)~Accepted design change:} the controller records the parameter revision at the source node; 
-\emph{(2)~DCG propagation:} ACCORD traverses outgoing dependency edges to identify the affected subgraph, including dependent decision nodes, violated constraints, and linked artifacts, while leaving unrelated stages untouched; 
-\emph{(3)~Artifact materialization:} agents regenerate or update the affected parameter files and RTL modules according to the revised contracts; and 
-\emph{(4)~Targeted recheck:} following the invalidation links, ACCORD re-executes the affected static, structural, and interface checks to produce updated validation evidence in $R_t$.
+\emph{(2)~DDG propagation:} ACCORD traverses outgoing dependency edges to identify the affected subgraph, including dependent decision nodes, violated constraints, and linked artifacts, while leaving unrelated stages untouched; 
+\emph{(3)~Artifact materialization:} agents regenerate or update the affected parameter files and RTL modules according to the updated design constraints; and 
+\emph{(4)~Incremental revalidation:} following the invalidation links, ACCORD re-executes the affected static, structural, and interface checks to produce updated verification results in $R_t$.
 
-\subsection{Contract-Guided Spatial Architecture Generation and DSE}
+\subsection{Spatial Architecture Generation and DSE}
 \looseness=-1
-Guided by the constraints in $G_t$, specialized agents construct the spatial accelerator through template binding, pipeline assembly, and hardware-bound DSE (Stages~3--6 in Fig.~\ref{fig:workflow}). Agents first map LLM operators to an extensible library of parameterized hardware templates and vendor IP. Rather than being restricted to fixed templates, agents can adapt or extend template micro-architectures to support custom numerical formats or operator fusions, provided that all modifications pass contract validation against $G_t$. Agents then organize the bound compute engines into a spatial dataflow pipeline connected via streaming FIFOs, defining operator scheduling, memory banking, and off-chip data transfers.
+Guided by the constraints in $G_t$, specialized agents construct the spatial accelerator through template binding, pipeline assembly, and hardware-bound DSE (Stages~3--6 in Fig.~\ref{fig:workflow}). Agents first map LLM operators to an extensible library of parameterized hardware templates and vendor IP. Rather than being restricted to fixed templates, agents can adapt or extend template micro-architectures to support custom numerical formats or operator fusions, provided that all modifications pass constraint checks against $G_t$. Agents then organize the bound compute engines into a spatial dataflow pipeline connected via streaming FIFOs, defining operator scheduling, memory banking, and off-chip data transfers.
 
 \looseness=-1
-Next, ACCORD performs hardware-bound DSE to optimize compute parallelism, PE array dimensions, FIFO depths, and buffer sizes under platform DSP, BRAM, bandwidth, and timing budgets. Each searchable parameter is explicitly linked to its corresponding hardware node in the DCG. Analytical performance/resource models prune infeasible candidates early, while downstream EDA feedback guides iterative re-exploration. Once a configuration is selected, ACCORD materializes the parameters into Chisel-based RTL and integrates the pipeline with board-level memory and control interfaces.
+Next, ACCORD performs hardware-bound DSE to optimize compute parallelism, PE array dimensions, FIFO depths, and buffer sizes under platform DSP, BRAM, bandwidth, and timing budgets. Each searchable parameter is explicitly linked to its corresponding hardware node in the DDG. Analytical performance/resource models prune infeasible candidates early, while downstream EDA feedback guides iterative re-exploration. Once a configuration is selected, ACCORD materializes the parameters into Chisel-based RTL and integrates the pipeline with board-level memory and control interfaces.
 
 \subsection{Dependency-Guided Failure Tracing, Repair, and Closure}
 \looseness=-1
 \textbf{Multi-level verification and physical implementation.}
-ACCORD supports a three-level verification hierarchy across Stages~7 and~8: \emph{operator-level} (numerical accuracy and handshakes), \emph{block-level} (inter-node streaming and FIFO behavior), and \emph{board-level} (system integration with FPGA memory/runtime interfaces). The experiments reported here use VCS elaboration and compilation and Vivado synthesis and timing analysis; the resulting checks and post-synthesis resource and timing reports are recorded in $R_t$ as revision-bound evidence. These results do not by themselves establish numerical correctness or post-route timing closure.
+ACCORD validates the generated accelerator across Stages~7 and~8 using a three-level verification hierarchy—\emph{operator-level} (numerical accuracy and handshakes), \emph{block-level} (inter-node streaming and FIFO behavior), and \emph{board-level} (system integration with FPGA memory/runtime interfaces)—followed by Vivado synthesis and place-and-route to evaluate actual resource utilization and timing slack (WNS). All simulation traces and EDA reports are stored in $R_t$ and associated with their corresponding design revisions.
 
 \looseness=-1
-\textbf{Backward root-cause tracing and bounded repair.}
-When a verification mismatch, stream deadlock, or timing/resource violation occurs, ACCORD avoids blind local patching by executing the four-step backward repair loop shown in Fig.~\ref{fig:dcg}(c):
+\textbf{Root-Cause Tracing and Targeted Repair.}
+When a verification mismatch, stream deadlock, or timing/resource violation occurs, ACCORD avoids blind local patching by executing the four-step backward repair loop shown in Fig.~\ref{fig:DDG}(c):
 \begin{enumerate}
 \item \emph{Observed failure capture:} ACCORD extracts the failure signature (e.g., critical-path timing violation or simulation deadlock) from the downstream tool report in $R_t$.
-\item \emph{DCG-based root-cause tracing:} Rather than blaming the module where the symptom surfaces, ACCORD traces the violated contracts backward through $G_t$ to identify a \emph{causal frontier}—correlating graph dependencies with tool reports to pinpoint the upstream root cause (e.g., overly aggressive DSE parallelism) and determine a strictly \emph{bounded repair scope} while preserving unrelated interfaces and modules.
-\item \emph{Scope-bounded repair:} The repair agent applies targeted modifications strictly within the authorized repair scope—either adjusting RTL/implementation parameters locally when the architecture remains viable, or revisiting upstream DSE/architecture nodes when structural bottlenecks must be resolved.
-\item \emph{Evidence invalidation and same-tool recheck:} Any accepted modification automatically invalidates outdated downstream evidence along the red dashed links in $G_t$. ACCORD then re-runs the originating verification or EDA tool alongside affected contract checks to confirm that the failure is resolved without introducing regressions.
+\item \emph{DDG-based root-cause tracing:} Rather than blaming the module where the symptom surfaces, ACCORD traces the violated design constraints backward through $G_t$ to identify a \emph{causal frontier}—correlating graph dependencies with tool reports to pinpoint the upstream root cause (e.g., overly aggressive DSE parallelism) and determine a strictly \emph{bounded repair scope} while preserving unrelated interfaces and modules.
+\item \emph{Targeted repair:} The repair agent applies targeted modifications strictly within the authorized repair scope—either adjusting RTL/implementation parameters locally when the architecture remains viable, or revisiting upstream DSE/architecture nodes when structural bottlenecks must be resolved.
+\item \emph{Verification Result Invalidation and Revalidation:} Any accepted modification automatically invalidates outdated verification results along the red dashed links in $G_t$. ACCORD then re-runs the originating verification or EDA tool alongside affected constraint checks to confirm that the failure is resolved without introducing regressions.
 \end{enumerate}
 
 \looseness=-1
-\textbf{Revision-bound design closure.}
-Across iterations, ACCORD tracks the best validated design candidate. Design closure is achieved only when all contracts in $G_t$ are satisfied and all required functional and physical implementation checks in $R_t$ hold valid evidence bound to the current artifact revision $A_t$, yielding a fully verified, timing-closed FPGA deliverables package.
+\textbf{Design closure.}
+Across iterations, ACCORD tracks the best validated design candidate. Design closure is achieved only when all design constraints in $G_t$ are satisfied and all required functional and physical implementation checks in $R_t$ hold valid verification results associated with the current artifact revision $A_t$, yielding a fully verified, timing-closed FPGA deliverables package.
 
 
 \section{Evaluation}
 
+\subsection{Experimental Setup}
+\looseness=-1
+\textbf{Workloads and Hardware Platform.}
+We evaluate ACCORD across multiple Transformer workloads—including \texttt{GPT-2} (24 layers, hidden size $1024$), and \texttt{[Gemma-2B / Qwen-1.5B / LLaMA-3]}—under a \texttt{W4A8} quantization policy. Target designs are implemented on an AMD/Xilinx UltraScale+ VU9P FPGA (\texttt{xcvu9p}). Full model weights are stored in off-chip DDR and streamed into bounded on-chip active/shadow weight caches alongside ping-pong activation buffers.
+
+\looseness=-1
+\textbf{LLM Backbones, Toolchain, and Baselines.}
+ACCORD coordinates specialized agents powered by three frontier LLM backbones: \texttt{GPT-6.1}, \texttt{DeepSeek-V4}, and \texttt{GLM-5.3}. The framework invokes Chisel for parameterized RTL generation, Synopsys VCS for hierarchical compilation and elaboration, and Xilinx Vivado for physical synthesis and timing closure. We compare ACCORD against two categories of baselines: 1)~state-of-the-art FPGA spatial compiler frameworks, including \textbf{Allo}~\cite{allo} and \textbf{StreamTensor}~\cite{streamtensor}; and 2)~agentic hardware design baselines, including an \textbf{Unstructured Multi-Agent (\texttt{B0})} that tracks design context via conversational histories without the DDG, and a \textbf{Local-Repair Agent} that patches modules directly from raw tool logs without dependency tracing or scope bounding.
+
+\begin{table*}[t]
+\centering
+\caption{End-to-End Accelerator Performance Across Compiler Baselines, Target LLM Workloads, and Upstream LLM Backbones on VU9P.}
+\label{tab:e2e_main}
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{4.5pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{|l|l|c|c|c|c|c|c|c|c|c|}
+\hline
+\textbf{Evaluation Dimension} & \textbf{Framework / Configuration} & \textbf{Target Workload} & \textbf{Precision} & \textbf{Array / Lanes} & \textbf{$F_{\max}$ (MHz)} & \textbf{LUT / FF (K)} & \textbf{DSP} & \textbf{BRAM / URAM} & \textbf{Throughput (tok/s, DSE est.)} & \textbf{Eff. (tok/s/DSP)} \\
+\hline
+\hline
+\multirow{3}{*}{\textbf{(1) vs. Spatial Compilers}}
+ & Allo~\cite{allo} & GPT-2 & W4A8 & — & 250.00 & 508 / 652 & 1780 & 384 / - & [XX] & [XX] \\
+\cline{2-11}
+ & StreamTensor~\cite{streamtensor} & GPT-2 & W4A8 & — & [XX] & [XX] / [XX] & [XX] & [XX] / [XX] & [XX] & [XX] \\
+\cline{2-11}
+ & \textbf{ACCORD (Ours)} & \textbf{GPT-2 Medium (seq32)} & \textbf{W4A8} & \textbf{$16\times 32$ / $16$} & \textbf{155.45} & \textbf{634.9 / 197.3} & \textbf{4,232} & \textbf{180 / 208} & \textbf{332.30} & \textbf{0.079} \\
+\hline
+\hline
+\multirow{4}{*}{\shortstack[l]{\textbf{(2) Cross-Workload}\\(\textit{Fixed LLM: GPT-6.1})}}
+ & ACCORD & GPT-2 Medium (seq32) & W4A8 & $16\times 32$ / $16$ & 155.45 & 634.9 / 197.3 & 4,232 & 180 / 208 & 332.30 & 0.079 \\
+\cline{2-11}
+ & ACCORD & Qwen2-0.5B (seq32) & W4A8 & $16\times 32$ / $16$ & 160.62 & 671.2 / 220.0 & 5,076 & 370 / 214 & 478.16 & 0.094 \\
+\cline{2-11}
+ & ACCORD & Gemma 3 1B (seq32) & W4A8 & $16\times 32$ / $16$ & 150.17 & 926.3 / 198.6 & 4,112 & 425 / 413 & 237.55 & 0.058 \\
+\cline{2-11}
+ & ACCORD & TinyLlama-1.1B (seq32) & W4A8 & $8\times 32$ / $16$ & 155.81 & 517.4 / 186.2 & 4,046 & 394 / 150 & 125.83 & 0.031 \\
+\hline
+\hline
+\multirow{4}{*}{\shortstack[l]{\textbf{(3) Cross-LLM Backbone}\\(\textit{Fixed Workload: GPT-2 Medium, seq32})}}
+ & \textbf{ACCORD (\texttt{GLM-5.3})} & \textbf{GPT-2 Medium (seq32)} & \textbf{W4A8} & \textbf{$16\times 32$ / $16$} & \textbf{155.45} & \textbf{563.6 / 157.4} & \textbf{3,464} & \textbf{176 / 208} & \textbf{441.03} & \textbf{0.127} \\
+\cline{2-11}
+ & \textbf{ACCORD (\texttt{DeepSeek-V4})} & \textbf{GPT-2 Medium (seq32)} & \textbf{W4A8} & \textbf{$16\times 32$ / $16$} & \textbf{152.74} & \textbf{614.3 / 177.4} & \textbf{3,074} & \textbf{180 / 208} & \textbf{326.52} & \textbf{0.106} \\
+\cline{2-11}
+ & \textbf{ACCORD (\texttt{GPT-6.1})} & \textbf{GPT-2 Medium (seq32)} & \textbf{W4A8} & \textbf{$16\times 32$ / $16$} & \textbf{155.45} & \textbf{634.9 / 197.3} & \textbf{4,232} & \textbf{180 / 208} & \textbf{332.30} & \textbf{0.079} \\
+\hline
+\end{tabular}%
+}
+\vspace{-6pt}
+\end{table*}
+
+\looseness=-1
+\textbf{Dependency-Driven Updates and Closure Ablation.}
+To evaluate cross-stage consistency during iterative parameter revisions (Fig.~\ref{fig:DDG}(b)), we evaluate $10$ architectural parameter updates (varying PE array rows, columns, FIFO depths, memory banking factors, and token reuse factors), each independently elaborated into $45\text{--}47$ RTL modules. As shown in Table~\ref{tab:propbench} (top), when an agent updates upstream DSE parameters but leaves downstream RTL stale (\emph{Stale Downstream RTL}) or updates only a subset of affected RTL modules (\emph{Partial Module Update}), standalone RTL syntax compilation passes all $20/20$ inconsistent designs silently ($0\%$ detection). In contrast, ACCORD combines parameter-binding verification with artifact-manifest verification to intercept $100\%$ ($20/20$) of stale and partial-update mismatches while accepting all $10/10$ fully synchronized updates.
+Furthermore, Table~\ref{tab:propbench} (bottom) compares static dependency traversal rules for predicting affected RTL files. While a 1-hop flat rule achieves $72.9\%$ macro recall because leaf parameter changes cascade into parent wrapper modules, traversing the DDG's full transitive hierarchy improves recall to $85.3\%$ and unaffected-module preservation to $93.5\%$, reducing missed dependencies by $44.4\%$.
+
+\begin{table}[t]
+\centering
+\caption{Dependency-Guided Failure Tracing, Repair, and Incremental Revalidation.}
+\label{tab:tracebench}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Failure Tracing \& Repair Scheme} & \textbf{Raw Compile} & \textbf{Collateral} & \textbf{Design-Consistent} & \textbf{Design State} \\
+\textbf{(10 Cross-Module Interface Faults)} & \textbf{Pass Rate} & \textbf{Corruption} & \textbf{Repair Rate} & \textbf{Committed} \\
+\midrule
+\texttt{B0}: Unbounded Local Repair (LLM) & $80\%$ ($8/10$) & $60\%$ ($6/10$) & $20\%$ ($2/10$) & — \\
+\textbf{ACCORD: DDG-Guided Repair (LLM)} & \textbf{80\% ($8/10$)} & \textbf{0\% ($0/10$)} & \textbf{80\% ($8/10$, $4.0\times$)} & \textbf{100\% ($8/8$)} \\
+\textbf{ACCORD: Deterministic Rule} & \textbf{100\% ($10/10$)} & \textbf{0\% ($0/10$)} & \textbf{100\% ($10/10$)} & \textbf{100\% ($10/10$)} \\
+\midrule
+\textbf{Revalidation Scope} & \multicolumn{2}{c}{\textbf{Targeted Time (s)}} & \textbf{Full Suite Time (s)} & \textbf{Speedup} \\
+\midrule
+Spec / Constraint / Binding Revision & \multicolumn{2}{c}{$0.024\text{--}0.028\text{ s}$} & $29.44\text{--}29.65\text{ s}$ & \textbf{$1,072\times\text{--}1,213\times$} \\
+Localized Operator RTL Revision & \multicolumn{2}{c}{$13.18\text{ s}$} & $29.27\text{--}29.35\text{ s}$ & \textbf{$2.23\times$ ($55.1\%$ saved)} \\
+\bottomrule
+\end{tabular}%
+}
+\vspace{-6pt}
+\end{table}
+
+\subsection{Effectiveness of Dependency-Guided Tracing and Repair}
+\looseness=-1
+\textbf{Root-Cause Tracing and Targeted Repair.}
+We evaluate backward failure diagnosis and repair (Fig.~\ref{fig:DDG}(c)) across $10$ stream-interface bitwidth violations and $10$ cross-module RTL port mismatches spanning all core accelerator stages. All $10$ RTL interface faults pass isolated module syntax checks but fail system-level elaboration when connected to consumer stages. By intersecting producer candidates with consumer instance context along DDG edges, ACCORD resolves shared-module ambiguity (e.g., disambiguating shared linear and residual units to their exact pipeline stages) and bounds the authorized repair scope, achieving $100\%$ ($20/20$) repair and state commitment under deterministic constraint checks (Table~\ref{tab:tracebench}, top).
+
+\looseness=-1
+When evaluated with an autonomous LLM repair agent (\texttt{GPT-6.1}), the contrast between \texttt{B0} (unbounded local repair from raw logs) and \textbf{ACCORD} (DDG-guided targeted repair) highlights a critical failure mode of existing hardware agents. Although both arms achieve an $80\%$ ($8/10$) raw compilation pass rate, \textbf{\texttt{B0} corrupts downstream consumer modules in $60\%$ ($6/10$) of cases}—modifying consumer instantiations where the error is reported rather than fixing the upstream producer—resulting in only a **$20\%$ ($2/10$) Design-Consistent Repair Rate**. Conversely, guided by DDG attribution and write-scope locks, \textbf{ACCORD reduces collateral consumer corruption to $0\%$ and achieves an $80\%$ ($8/10$) Design-Consistent Repair Rate ($4.0\times$ improvement)}, with $100\%$ ($8/8$) of repaired designs passing full state commitment.
+
+\looseness=-1
+\textbf{Incremental Revalidation.}
+Across $8$ mutation benchmarks spanning RTL, timing constraints, model configs, and documentation, ACCORD's versioned result manager achieves $100\%$ invalidation accuracy with no acceptance of stale verification results and zero false invalidations. As shown in Table~\ref{tab:tracebench} (bottom), compared to re-running the full compilation and top-level elaboration suite ($\sim 29.5\text{ s}$), DDG-guided incremental revalidation reduces verification time to $0.024\text{--}0.028\text{ s}$ for specification, pipeline, and parameter-binding updates ($>1,000\times$ speedup) and to $13.18\text{ s}$ for localized operator RTL repairs ($2.23\times$ speedup) while maintaining identical fault-detection coverage.
 
 \section{Conclusion}
+\looseness=-1
+We presented ACCORD, a dependency-aware multi-agent framework for end-to-end FPGA spatial accelerator design of LLMs. By maintaining a shared design state and explicitly tracking cross-stage dependencies through a Design Dependency Graph (DDG), ACCORD combines structured design state management with flexible agent-based hardware design. Extensive evaluations show that ACCORD generates high-throughput spatial accelerators reaching $152.7\text{--}155.5\text{ MHz}$ on UltraScale+ FPGAs, outperforms spatial compiler baselines, intercepts $100\%$ of cross-stage parameter mismatches missed by standalone compilation, and improves design-consistent LLM repair rates by $4.0\times$ with zero collateral module corruption.
 
 
 

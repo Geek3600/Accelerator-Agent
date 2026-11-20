@@ -26,6 +26,10 @@ from accagent.framework.sacg_utils import (
 from accagent.framework.stage_entry import run_sacg_stage
 from accagent.framework.stage_llm import ACTION_GROUNDING_REGISTRY, run_stage_agent
 from accagent.framework.stage_team import run_design_team, team_failure_errors, team_summary
+from accagent.framework.verification_evidence_contract import (
+    COMPILE_ONLY_POLICY,
+    active_verification_policy,
+)
 
 
 class PipelinePlanningError(ValueError):
@@ -539,11 +543,17 @@ def board_axi_contract(state: dict[str, Any]) -> dict[str, Any]:
     search = design_space.get("search_params", {}) if isinstance(design_space.get("search_params"), dict) else {}
     ddr_axi = search.get("ddr_axi", {}) if isinstance(search.get("ddr_axi"), dict) else {}
     memory_system = memory.get("memory_system", {}) if isinstance(memory.get("memory_system"), dict) else memory
+    accelerator_interface = memory_system.get("accelerator_facing_interface", {})
+    accelerator_interface = accelerator_interface if isinstance(accelerator_interface, dict) else {}
     data_width_bits = scalar(memory_system.get("axi_data_width_bits"), fixed_or_first(ddr_axi.get("data_width_bits"), 512))
     data_bytes = scalar(memory_system.get("axi_data_bytes"), max(1, data_width_bits // 8))
     return {
         "protocol": memory_system.get("axi_protocol", "AXI"),
-        "core_side_interface_name": memory_system.get("core_side_interface_name") or memory_system.get("ddr_channel_prefix"),
+        "core_side_interface_name": (
+            memory_system.get("core_side_interface_name")
+            or memory_system.get("ddr_channel_prefix")
+            or accelerator_interface.get("name")
+        ),
         "data_width_bits": data_width_bits,
         "data_bytes": data_bytes,
         "alignment_bytes": fixed_or_first(ddr_axi.get("alignment_bytes"), data_bytes),
@@ -1289,7 +1299,10 @@ def check_memory_runtime_contract(plan: dict[str, Any]) -> dict[str, Any]:
         if alignment > 1 and size % alignment != 0:
             errors.append(f"{region.get('name')}: size_bytes={size} is not aligned to {alignment}")
     runtime = schedule.get("runtime_config_requirements", {}) if isinstance(schedule.get("runtime_config_requirements"), dict) else {}
-    for key in ["control_protocol", "h2c_device_template", "c2h_device_template", "command_sequence"]:
+    required_runtime_fields = ["control_protocol", "command_sequence"]
+    if active_verification_policy() != COMPILE_ONLY_POLICY:
+        required_runtime_fields.extend(["h2c_device_template", "c2h_device_template"])
+    for key in required_runtime_fields:
         if is_empty_value(runtime.get(key)):
             errors.append(f"runtime_config_requirements missing {key}")
     if errors:

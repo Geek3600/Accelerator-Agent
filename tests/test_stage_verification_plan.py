@@ -29,13 +29,112 @@ from accagent.framework.stage_verification import (
 from accagent.framework.stage_verification_plan import (
     build_hierarchical_verification_plan,
     build_verification_gate_dag,
+    compact_contract_for_planner,
     stage5_gate_tool_roles,
     stage_worker_errors,
+    tool_protocol_is_required,
     write_stage5_refinement_artifacts,
 )
 
 
 class ThirdLayerProducerOrderTest(TestCase):
+    def test_board_runtime_is_deferred_only_for_compile_only_policy(self) -> None:
+        spec = {"name": "board_runtime", "required": False}
+
+        self.assertFalse(tool_protocol_is_required("board_runtime", spec, "vcs_compile_only"))
+        self.assertTrue(tool_protocol_is_required("board_runtime", spec, "full_semantic_simulation"))
+        self.assertTrue(tool_protocol_is_required("case_vcs", {"required": True}, "vcs_compile_only"))
+
+    def test_compile_only_planner_projection_marks_runtime_and_golden_nodes_deferred(self) -> None:
+        contract = {
+            "verification_execution_policy": {
+                "validation_policy": "vcs_compile_only",
+                "acceptance": "current-source VCS compile/elaboration/link",
+            },
+            "policy": {"board_runtime_required_for_final_pass": True},
+            "required_evidence_gates": [
+                {"name": "case_leaf_functional"},
+                {"name": "case_single_layer_functional"},
+                {"name": "case_board_interface_discovery"},
+                {"name": "case_board_runtime"},
+            ],
+            "required_tool_protocols": [
+                {"name": "board_runtime", "configured": False, "required": False}
+            ],
+            "verification_gate_dag": {
+                "nodes": [
+                    {"name": "case_leaf_functional", "phase": "operator_leaf_functional"},
+                    {"name": "case_single_layer_functional", "phase": "single_layer_functional"},
+                    {"name": "case_board_interface_discovery", "phase": "board_interface_discovery"},
+                    {"name": "case_board_runtime", "phase": "board_runtime"},
+                ],
+                "edges": [],
+            },
+        }
+
+        projection = compact_contract_for_planner(contract)
+        selector = projection["acceptance_selector"]
+        self.assertEqual(selector["validation_policy"], "vcs_compile_only")
+        self.assertEqual(
+            selector["required_gate_names"],
+            [
+                "case_leaf_functional",
+                "case_single_layer_functional",
+                "case_board_interface_discovery",
+            ],
+        )
+        self.assertIn("case_board_runtime", selector["deferred_gate_names"])
+        self.assertFalse(selector["board_runtime_is_current_stage_blocker"])
+        self.assertFalse(selector["golden_comparison_is_current_stage_acceptance"])
+        runtime = projection["required_tool_protocols"][0]
+        self.assertFalse(runtime["required_for_current_policy"])
+
+    def test_materialized_compile_only_stage6_handoff_is_not_a_current_blocker(self) -> None:
+        planner_output = {
+            "status": "blocked_pending_stage6_refinement",
+            "risks": [
+                "board_runtime remains an explicit final-closure blocker under the full semantic policy."
+            ],
+            "executable_actions": [
+                {
+                    "id": "stage5.refine_compile_only_hierarchical_gate_dag",
+                    "stage": "verification_artifacts",
+                    "action_type": "verification_gate_dag_refinement",
+                }
+            ],
+        }
+        with TemporaryDirectory() as temp_dir, patch.dict(
+            "os.environ", {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}
+        ):
+            manifest = Path(temp_dir) / "stage5_refinement_manifest.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "status": "ready",
+                        "materialized_stage5_action_ids": [
+                            "stage5.refine_compile_only_hierarchical_gate_dag"
+                        ],
+                        "action_coverage": {
+                            "status": "ready",
+                            "actions": [
+                                {
+                                    "id": "stage5.refine_compile_only_hierarchical_gate_dag",
+                                    "status": "pass",
+                                }
+                            ],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            materialization = {"status": "ready", "manifest": str(manifest)}
+            self.assertEqual(stage_worker_errors(planner_output, {}, materialization), [])
+
+            with patch.dict(
+                "os.environ", {"SPATIALACC_VERIFICATION_POLICY": "full_semantic_simulation"}
+            ):
+                self.assertTrue(stage_worker_errors(planner_output, {}, materialization))
+
     def test_compile_only_board_scope_keeps_board_preparation_chain(self) -> None:
         adapter = {
             "evidence_gates": {

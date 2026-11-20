@@ -1,0 +1,785 @@
+{
+  "axi_transfer_layout": {
+    "board_axi": {
+      "addr_width_bits": 37,
+      "alignment_bytes": 64,
+      "core_side_interface_name": null,
+      "data_bytes": 64,
+      "data_width_bits": 512,
+      "ddr_channels": 1,
+      "protocol": "AXI",
+      "source": "constraint.memory.board.memory_system"
+    },
+    "layout_kind": "exact_tensor_shape_transfer_layout",
+    "notes": [
+      "Stage 5 assigns concrete base addresses and checks non-overlap/alignment.",
+      "Stage 6+ must provide real simulation, implementation, timing, and board evidence."
+    ],
+    "per_stage": [
+      {
+        "aligned_bytes": 66560,
+        "axi_beats": 1040,
+        "input_activation_bytes": 32768,
+        "input_bits": 8,
+        "op": "layer_norm_1",
+        "output_activation_bytes": 32768,
+        "output_bits": 8,
+        "stage_id": "stage_00_layer_norm_1",
+        "total_bytes": 66560,
+        "weight_bytes": 1024,
+        "weight_term_ids": [
+          "ln_1_weight",
+          "ln_1_bias"
+        ]
+      },
+      {
+        "aligned_bytes": 2179072,
+        "axi_beats": 34048,
+        "input_activation_bytes": 32768,
+        "input_bits": 8,
+        "op": "self_attention",
+        "output_activation_bytes": 32768,
+        "output_bits": 8,
+        "stage_id": "stage_01_self_attention",
+        "total_bytes": 2179072,
+        "weight_bytes": 2113536,
+        "weight_term_ids": [
+          "attn_c_attn_weight",
+          "attn_c_attn_bias",
+          "attn_c_proj_weight",
+          "attn_c_proj_bias"
+        ]
+      },
+      {
+        "aligned_bytes": 65536,
+        "axi_beats": 1024,
+        "input_activation_bytes": 32768,
+        "input_bits": 8,
+        "op": "residual_add_1",
+        "output_activation_bytes": 32768,
+        "output_bits": 8,
+        "stage_id": "stage_02_residual_add_1",
+        "total_bytes": 65536,
+        "weight_bytes": 0,
+        "weight_term_ids": []
+      },
+      {
+        "aligned_bytes": 66560,
+        "axi_beats": 1040,
+        "input_activation_bytes": 32768,
+        "input_bits": 8,
+        "op": "layer_norm_2",
+        "output_activation_bytes": 32768,
+        "output_bits": 8,
+        "stage_id": "stage_03_layer_norm_2",
+        "total_bytes": 66560,
+        "weight_bytes": 1024,
+        "weight_term_ids": [
+          "ln_2_weight",
+          "ln_2_bias"
+        ]
+      },
+      {
+        "aligned_bytes": 2277376,
+        "axi_beats": 35584,
+        "input_activation_bytes": 32768,
+        "input_bits": 8,
+        "op": "mlp_fc",
+        "output_activation_bytes": 131072,
+        "output_bits": 8,
+        "stage_id": "stage_04_mlp_fc",
+        "total_bytes": 2277376,
+        "weight_bytes": 2113536,
+        "weight_term_ids": [
+          "mlp_c_fc_weight",
+          "mlp_c_fc_bias"
+        ]
+      },
+      {
+        "aligned_bytes": 262144,
+        "axi_beats": 4096,
+        "input_activation_bytes": 131072,
+        "input_bits": 8,
+        "op": "activation",
+        "output_activation_bytes": 131072,
+        "output_bits": 8,
+        "stage_id": "stage_05_activation",
+        "total_bytes": 262144,
+        "weight_bytes": 0,
+        "weight_term_ids": []
+      },
+      {
+        "aligned_bytes": 2265088,
+        "axi_beats": 35392,
+        "input_activation_bytes": 131072,
+        "input_bits": 8,
+        "op": "mlp_proj",
+        "output_activation_bytes": 32768,
+        "output_bits": 8,
+        "stage_id": "stage_06_mlp_proj",
+        "total_bytes": 2265088,
+        "weight_bytes": 2101248,
+        "weight_term_ids": [
+          "mlp_c_proj_weight",
+          "mlp_c_proj_bias"
+        ]
+      },
+      {
+        "aligned_bytes": 65536,
+        "axi_beats": 1024,
+        "input_activation_bytes": 32768,
+        "input_bits": 8,
+        "op": "residual_add_2",
+        "output_activation_bytes": 32768,
+        "output_bits": 8,
+        "stage_id": "stage_07_residual_add_2",
+        "total_bytes": 65536,
+        "weight_bytes": 0,
+        "weight_term_ids": []
+      }
+    ],
+    "schema_version": "spatialaccagent.parameter_axi_transfer_layout.v1",
+    "total_aligned_bytes_per_layer": 7247872,
+    "used_for": "static AXI alignment and packing checks only; not bandwidth, timing, power, or throughput evidence"
+  },
+  "checker_summary": {
+    "errors": [],
+    "failed": 0,
+    "passed": 6,
+    "warnings": []
+  },
+  "design_team": {
+    "executable_actions": [],
+    "reason": "DSE selection and deterministic parameter checks gate the exact measurement handoff.",
+    "status": "not_required_for_measurement_handoff"
+  },
+  "dse_measurement_summary": {
+    "complete": false,
+    "implementation_infeasible_count": 0,
+    "legal_candidate_count": 360,
+    "measured_candidate_count": 0,
+    "unmeasured_candidate_count": 360
+  },
+  "dse_selection_rationale": {
+    "campaign_complete": false,
+    "eligibility_reason": "Selected candidate is legal and has no target-board app-shell measurement yet.",
+    "llm_assumptions": [
+      "The supplied eligible candidate table and estimated ranking are authoritative for the current selection.",
+      "The exact candidate binding will be passed through generated hardware configuration without LLM parameter modification.",
+      "The requested measurement is target-board app-shell synthesis scope; throughput will be calculated only from measured clock, processed-token count, and RTL cycle evidence.",
+      "No simulator execution, runtime weight loading, golden comparison, or numerical correctness claim is needed for this DSE measurement handoff."
+    ],
+    "llm_ranked_candidate_ids": [
+      "arch_0f48af2aff62",
+      "arch_36d1564a7961",
+      "arch_6ab477dfeda8",
+      "arch_ea8dc02697b6",
+      "arch_f85b5b55342f"
+    ],
+    "llm_rationale": "The campaign is incomplete, so policy requires selecting exactly one supplied unmeasured legal candidate rather than a measured Pareto candidate. arch_0f48af2aff62 is first in the supplied estimated priority ranking. Because the estimate is insufficient evidence and resource measurements are unknown, this ranking guides measurement order only; it is not a claim of optimality, feasibility, or target attainment.",
+    "llm_requested_candidate_id": "arch_0f48af2aff62",
+    "qor_estimate": {
+      "model": "calibrated_bounded_ddr_pipeline_ratio_v20_attention_output_reuse",
+      "reason": "no compatible source-bound calibration sample",
+      "status": "insufficient_evidence"
+    },
+    "qor_estimator": {
+      "model": "calibrated_bounded_ddr_pipeline_ratio_v20_attention_output_reuse",
+      "validation": {
+        "cycle_validation_sample_count": 0,
+        "held_out_prediction_count": 0,
+        "mean_absolute_error_for_zero_actual": {},
+        "mean_relative_absolute_error": {},
+        "method": "leave_one_source_fingerprint_out",
+        "sample_count": 1,
+        "status": "insufficient_independent_samples"
+      }
+    },
+    "requires_measurement": [
+      "integrated Vivado implementation resources",
+      "post-implementation Vivado power",
+      "achieved clock frequency",
+      "hardware-counter-derived tokens per second"
+    ],
+    "schema_version": "spatialaccagent.stage4_dse_selection_rationale.v2",
+    "selected_candidate_id": "arch_0f48af2aff62",
+    "selection_source": "llm_measurement_order",
+    "status": "ready"
+  },
+  "errors": [],
+  "formal_dse_campaign": {
+    "campaign_complete": false,
+    "policy": {
+      "next_required_evidence": "exact_target_board_app_shell",
+      "no_qor_or_hardware_pass_claim_before_measurement": true
+    },
+    "promotion_scope": "candidate_binding_for_exact_target_board_app_shell_measurement",
+    "selected_candidate_requires_exact_measurement": true,
+    "status": "measurement_pending"
+  },
+  "global_params": {
+    "acc_bits": 32,
+    "activation_banks": 2,
+    "activation_memory": "xpm_bram",
+    "attention_output_cross_token_reuse_tokens": 1,
+    "burst_beats": 1,
+    "cache_refill_data_width_bits": 512,
+    "cache_tile_count": 2,
+    "cache_tile_words": 256,
+    "clock_target_mhz": null,
+    "compute_array_cols": 32,
+    "compute_array_rows": 16,
+    "compute_backend": "integer_dsp",
+    "cross_token_reuse_tokens": 16,
+    "elem_bits": 8,
+    "fifo_depth": 128,
+    "fifo_memory": "xpm_bram",
+    "input_bits": 8,
+    "integer_mode": true,
+    "lanes": 16,
+    "large_cache_memory": "xpm_uram",
+    "output_bits": 8,
+    "pipeline_depth": 1,
+    "rounding": "nearest_even",
+    "saturation": true,
+    "scale_bits": 32,
+    "scale_shift": 31,
+    "weight_banks": 1,
+    "weight_banks_by_role": {
+      "weight": 1,
+      "weight_attn_out": 1,
+      "weight_attn_out_bias": 1,
+      "weight_mlp_down": 1,
+      "weight_mlp_down_bias": 1,
+      "weight_mlp_up": 1,
+      "weight_mlp_up_bias": 1,
+      "weight_qkv": 1,
+      "weight_qkv_bias": 1
+    },
+    "weight_bits": 4,
+    "weight_memory": "xpm_uram"
+  },
+  "legality_errors": [],
+  "llm_agent": {
+    "agent": "dse_parameter_agent",
+    "approval_required_for": [],
+    "assumptions": [
+      "The supplied eligible candidate table and estimated ranking are authoritative for the current selection.",
+      "The exact candidate binding will be passed through generated hardware configuration without LLM parameter modification.",
+      "The requested measurement is target-board app-shell synthesis scope; throughput will be calculated only from measured clock, processed-token count, and RTL cycle evidence.",
+      "No simulator execution, runtime weight loading, golden comparison, or numerical correctness claim is needed for this DSE measurement handoff."
+    ],
+    "executable_actions": [
+      {
+        "acceptance_checkers": [
+          "case_vivado_synthesis_report_check"
+        ],
+        "action_type": "exact_candidate_measurement",
+        "consumes": [
+          "dse_selection_evidence.eligible_candidate_table row for arch_0f48af2aff62",
+          "dse_search_space.estimated_ranked_candidate_ids",
+          "target-board app-shell synthesis configuration"
+        ],
+        "id": "measure_arch_0f48af2aff62_target_board_app_shell",
+        "on_failure": "Do not mark the candidate measured or infer QoR from estimates. Preserve tool diagnostics, resolve the measurement failure through the bounded flow, and retain the campaign as incomplete.",
+        "produces": [
+          "source-bound target-board app-shell synthesis resource report",
+          "source-bound Vivado synthesis timing report",
+          "RTL-cycle-derived throughput measurement evidence",
+          "measurement ledger entry for arch_0f48af2aff62"
+        ],
+        "rationale": "This is the highest-priority supplied eligible unmeasured candidate according to estimated_ranked_candidate_ids. Its selection is for measurement only; the current structural estimate cannot prove feasibility or QoR.",
+        "requires_approval": false,
+        "stage": "parameter_binding",
+        "tool_roles": [
+          "case_vivado_synthesis",
+          "case_vivado_synthesis_report_check"
+        ]
+      }
+    ],
+    "observations": [
+      "The campaign has 360 legal candidates, zero measured candidates, and is incomplete.",
+      "The supplied estimator has insufficient independent calibration evidence; eligible candidates have insufficient_evidence QoR estimates and unknown measured resource headroom.",
+      "arch_0f48af2aff62 is the first candidate in estimated_ranked_candidate_ids and is supplied as eligible and unmeasured."
+    ],
+    "proposed_actions": [
+      "Run the exact target-board app-shell synthesis measurement for arch_0f48af2aff62 using its supplied candidate binding.",
+      "Record only source-bound tool results and update the measurement ledger; use resulting evidence to recalibrate subsequent estimates."
+    ],
+    "ranked_candidate_ids": [
+      "arch_0f48af2aff62",
+      "arch_36d1564a7961",
+      "arch_6ab477dfeda8",
+      "arch_ea8dc02697b6",
+      "arch_f85b5b55342f"
+    ],
+    "risks": [
+      "Structural ranking is only a measurement-priority signal and does not establish target attainment, resource fit, or Pareto membership.",
+      "The supplied single calibration sample is not sufficient for validated extrapolation."
+    ],
+    "sacg_focus": {
+      "artifacts": [
+        "dse_selection_evidence.eligible_candidate_table",
+        "dse_search_space.estimated_ranked_candidate_ids",
+        "target-board app-shell synthesis and timing reports",
+        "source-bound measurement ledger entry"
+      ],
+      "constraints": [
+        "Measure only a supplied eligible candidate and preserve its exact parameter binding.",
+        "Use synthesis-scope evidence for resources, Vivado estimated clock, and throughput derived from processed tokens, clock frequency, and RTL cycles.",
+        "Do not treat insufficient-evidence structural estimates as QoR or feasibility evidence."
+      ],
+      "edges": [
+        "candidate parameters \u2192 generated hardware configuration \u2192 target-board app-shell measurement \u2192 source-bound QoR evidence"
+      ],
+      "nodes": [
+        "candidate arch_0f48af2aff62",
+        "target-board app-shell synthesis measurement"
+      ]
+    },
+    "schema_version": "spatialaccagent.dse_parameter_agent.v1",
+    "selected_candidate_id": "arch_0f48af2aff62",
+    "selection_rationale": "The campaign is incomplete, so policy requires selecting exactly one supplied unmeasured legal candidate rather than a measured Pareto candidate. arch_0f48af2aff62 is first in the supplied estimated priority ranking. Because the estimate is insufficient evidence and resource measurements are unknown, this ranking guides measurement order only; it is not a claim of optimality, feasibility, or target attainment.",
+    "stage": "parameter_binding",
+    "status": "next_exact_measurement_selected",
+    "summary": "Selected the highest-priority supplied unmeasured legal candidate for the next target-board app-shell exact measurement. The campaign is incomplete; this is a measurement priority, not an optimal or Pareto-optimal selection."
+  },
+  "llm_executable_actions": [
+    {
+      "acceptance_checkers": [
+        "case_vivado_synthesis_report_check"
+      ],
+      "action_type": "exact_candidate_measurement",
+      "consumes": [
+        "dse_selection_evidence.eligible_candidate_table row for arch_0f48af2aff62",
+        "dse_search_space.estimated_ranked_candidate_ids",
+        "target-board app-shell synthesis configuration"
+      ],
+      "id": "measure_arch_0f48af2aff62_target_board_app_shell",
+      "on_failure": "Do not mark the candidate measured or infer QoR from estimates. Preserve tool diagnostics, resolve the measurement failure through the bounded flow, and retain the campaign as incomplete.",
+      "produces": [
+        "source-bound target-board app-shell synthesis resource report",
+        "source-bound Vivado synthesis timing report",
+        "RTL-cycle-derived throughput measurement evidence",
+        "measurement ledger entry for arch_0f48af2aff62"
+      ],
+      "rationale": "This is the highest-priority supplied eligible unmeasured candidate according to estimated_ranked_candidate_ids. Its selection is for measurement only; the current structural estimate cannot prove feasibility or QoR.",
+      "requires_approval": false,
+      "stage": "parameter_binding",
+      "tool_roles": [
+        "case_vivado_synthesis",
+        "case_vivado_synthesis_report_check"
+      ]
+    }
+  ],
+  "llm_memory_claim_audit": {
+    "inactive_sacg_memory_blocker_status_ignored": false,
+    "sacg_memory_truth": {
+      "active_contamination_barrier_count": 0,
+      "active_contamination_barriers": [],
+      "active_contamination_barriers_truncated": false,
+      "open_backtrack_request_count": 0,
+      "open_backtrack_requests": [],
+      "open_backtrack_requests_truncated": false,
+      "open_retry_request_count": 0,
+      "open_retry_requests": [],
+      "open_retry_requests_truncated": false,
+      "policy": "Only active_contamination_barriers and open retry/backtrack requests in this object are current SACG-memory blockers. Historical, closed, superseded, or rejected records are recovery evidence only and must not be treated as active blockers.",
+      "schema_version": "spatialaccagent.sacg_memory_truth.v0",
+      "truth_source": "source_sacg_state.memory"
+    },
+    "schema_version": "spatialaccagent.llm_memory_claim_audit.v0"
+  },
+  "materialized_refill_rate_contract": {
+    "board_width_discovered_from": "constraint.memory.board.memory_system.axi_data_width_bits",
+    "candidate_bindings": [
+      512
+    ],
+    "largest_board_supported_width": 512,
+    "materialized_refill_rate_bits_per_cycle": 512,
+    "optimistic_axi_beat_rate_credited": false,
+    "parameter": "cache_refill_data_width_bits",
+    "payload_is_not_address_or_count_units": true,
+    "response_words_per_cycle": 16,
+    "scalar_payload_fallback_allowed": false,
+    "source": "exact_board_ddr_tile_service.aggregate_response_data_width_bits",
+    "status": "pass",
+    "supported_widths": [
+      512
+    ],
+    "value": 512
+  },
+  "num_bindings": 8,
+  "numeric_binding_plan": {
+    "acc_dtype": "int32",
+    "accumulator_bits": 32,
+    "activation_bits": 8,
+    "activation_dtype": "int8",
+    "cast_points": [
+      {
+        "input_bits": 8,
+        "input_cast": "none",
+        "internal_elem_bits": 8,
+        "op": "layer_norm_1",
+        "output_bits": 8,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_00_layer_norm_1"
+      },
+      {
+        "input_bits": 8,
+        "input_cast": "none",
+        "internal_elem_bits": 8,
+        "op": "self_attention",
+        "output_bits": 8,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_01_self_attention"
+      },
+      {
+        "input_bits": 8,
+        "input_cast": "none",
+        "internal_elem_bits": 8,
+        "op": "residual_add_1",
+        "output_bits": 8,
+        "output_cast": "none",
+        "residual_precision": 8,
+        "stage_id": "stage_02_residual_add_1"
+      },
+      {
+        "input_bits": 8,
+        "input_cast": "none",
+        "internal_elem_bits": 8,
+        "op": "layer_norm_2",
+        "output_bits": 8,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_03_layer_norm_2"
+      },
+      {
+        "input_bits": 8,
+        "input_cast": "none",
+        "internal_elem_bits": 8,
+        "op": "mlp_fc",
+        "output_bits": 8,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_04_mlp_fc"
+      },
+      {
+        "input_bits": 8,
+        "input_cast": "none",
+        "internal_elem_bits": 8,
+        "op": "activation",
+        "output_bits": 8,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_05_activation"
+      },
+      {
+        "input_bits": 8,
+        "input_cast": "none",
+        "internal_elem_bits": 8,
+        "op": "mlp_proj",
+        "output_bits": 8,
+        "output_cast": "none",
+        "residual_precision": null,
+        "stage_id": "stage_06_mlp_proj"
+      },
+      {
+        "input_bits": 8,
+        "input_cast": "none",
+        "internal_elem_bits": 8,
+        "op": "residual_add_2",
+        "output_bits": 8,
+        "output_cast": "none",
+        "residual_precision": 8,
+        "stage_id": "stage_07_residual_add_2"
+      }
+    ],
+    "eps_source": "constraint.model.decoder.norm_type/default eps from template binding",
+    "fixed_point_contract": {
+      "binary_exponent_is_consumed_by_requantizer": true,
+      "binary_exponent_width_bits": 8,
+      "fractional_bits": 31,
+      "multiplier_bits": 32,
+      "multiplier_dtype": "int32",
+      "representation": "unsigned_q31_multiplier_times_signed_per_tensor_or_per_channel_binary_exponent",
+      "rounding": "nearest_even",
+      "saturation": true,
+      "shift_is_explicit": true
+    },
+    "policy_id": "",
+    "rounding": "nearest_even",
+    "saturation": true,
+    "scale_bits": 32,
+    "scale_dtype": "int32",
+    "source": "constraint.numeric.policy.default_rules",
+    "weight_bits": 4,
+    "weight_dtype": "int4"
+  },
+  "outputs": {
+    "dse_candidate_records": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/parameter_binding/dse_candidate_records.jsonl",
+    "dse_constraint_report": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/parameter_binding/dse_constraint_report.json",
+    "dse_measurements": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/parameter_binding/dse_measurements.jsonl",
+    "dse_pareto_frontier": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/parameter_binding/dse_pareto_frontier.json",
+    "dse_search_space": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/parameter_binding/dse_search_space.json",
+    "dse_selection_rationale": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/parameter_binding/dse_selection_rationale.json",
+    "llm_agent": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/parameter_binding/llm/dse_parameter_agent_result.json",
+    "parameter_binding": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/parameter_binding/parameter_binding.json",
+    "parameter_static_checks": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/parameter_binding/parameter_static_checks.json",
+    "sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/parameter_binding/sacg_state.json",
+    "selected_architecture": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/parameter_binding/selected_architecture.json"
+  },
+  "sacg_transition_id": "transition.0005",
+  "schema_version": "spatialaccagent.parameter_binding_report.v0",
+  "selected_architecture": {
+    "candidate_id": "arch_0f48af2aff62",
+    "measurement": null,
+    "parameters": {
+      "activation_banks": 2,
+      "activation_memory": "xpm_bram",
+      "attention_output_cross_token_reuse_tokens": 1,
+      "cache_refill_data_width_bits": 512,
+      "cache_tile_count": 2,
+      "cache_tile_words": 256,
+      "compute_array_cols": 32,
+      "compute_array_rows": 16,
+      "compute_backend": "integer_dsp",
+      "cross_token_reuse_tokens": 16,
+      "fifo_depth": 128,
+      "fifo_memory": "xpm_bram",
+      "lanes": 16,
+      "large_cache_memory": "xpm_uram",
+      "weight_banks": 1,
+      "weight_banks_by_role": {
+        "weight": 1,
+        "weight_attn_out": 1,
+        "weight_attn_out_bias": 1,
+        "weight_mlp_down": 1,
+        "weight_mlp_down_bias": 1,
+        "weight_mlp_up": 1,
+        "weight_mlp_up_bias": 1,
+        "weight_qkv": 1,
+        "weight_qkv_bias": 1
+      },
+      "weight_memory": "xpm_uram"
+    },
+    "selection_rationale": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/parameter_binding/dse_selection_rationale.json"
+  },
+  "source_sacg_state": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gpt2_medium_seq32_u280_gpt61_20261114/pipeline_planning/sacg_state.json",
+  "stage": "parameter_binding",
+  "status": "ready",
+  "stream_contract_trace": [
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_00_layer_norm_1",
+      "edge_id": "edge.data.block_input.to.stage_00_layer_norm_1.input",
+      "element_bits": 8,
+      "kind": "input",
+      "src_output_bits": 8,
+      "src_stage": "block_input",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 32,
+        "width": 1024
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_02_residual_add_1",
+      "edge_id": "edge.data.block_input.to.stage_02_residual_add_1.residual_skip",
+      "element_bits": 8,
+      "kind": "residual_skip",
+      "src_output_bits": 8,
+      "src_stage": "block_input",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 32,
+        "width": 1024
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_01_self_attention",
+      "edge_id": "edge.data.stage_00_layer_norm_1.to.stage_01_self_attention.main",
+      "element_bits": 8,
+      "kind": "main",
+      "src_output_bits": 8,
+      "src_stage": "stage_00_layer_norm_1",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 32,
+        "width": 1024
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_02_residual_add_1",
+      "edge_id": "edge.data.stage_01_self_attention.to.stage_02_residual_add_1.main",
+      "element_bits": 8,
+      "kind": "main",
+      "src_output_bits": 8,
+      "src_stage": "stage_01_self_attention",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 32,
+        "width": 1024
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_03_layer_norm_2",
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_03_layer_norm_2.main",
+      "element_bits": 8,
+      "kind": "main",
+      "src_output_bits": 8,
+      "src_stage": "stage_02_residual_add_1",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 32,
+        "width": 1024
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_07_residual_add_2",
+      "edge_id": "edge.data.stage_02_residual_add_1.to.stage_07_residual_add_2.residual_skip",
+      "element_bits": 8,
+      "kind": "residual_skip",
+      "src_output_bits": 8,
+      "src_stage": "stage_02_residual_add_1",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 32,
+        "width": 1024
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_04_mlp_fc",
+      "edge_id": "edge.data.stage_03_layer_norm_2.to.stage_04_mlp_fc.main",
+      "element_bits": 8,
+      "kind": "main",
+      "src_output_bits": 8,
+      "src_stage": "stage_03_layer_norm_2",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 32,
+        "width": 1024
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_05_activation",
+      "edge_id": "edge.data.stage_04_mlp_fc.to.stage_05_activation.main",
+      "element_bits": 8,
+      "kind": "main",
+      "src_output_bits": 8,
+      "src_stage": "stage_04_mlp_fc",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 32,
+        "width": 4096
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_06_mlp_proj",
+      "edge_id": "edge.data.stage_05_activation.to.stage_06_mlp_proj.main",
+      "element_bits": 8,
+      "kind": "main",
+      "src_output_bits": 8,
+      "src_stage": "stage_05_activation",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 32,
+        "width": 4096
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "stage_07_residual_add_2",
+      "edge_id": "edge.data.stage_06_mlp_proj.to.stage_07_residual_add_2.main",
+      "element_bits": 8,
+      "kind": "main",
+      "src_output_bits": 8,
+      "src_stage": "stage_06_mlp_proj",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 32,
+        "width": 1024
+      }
+    },
+    {
+      "dst_input_bits": 8,
+      "dst_stage": "block_output",
+      "edge_id": "edge.data.stage_07_residual_add_2.to.block_output.output",
+      "element_bits": 8,
+      "kind": "output",
+      "src_output_bits": 8,
+      "src_stage": "stage_07_residual_add_2",
+      "stream_order": [
+        "token",
+        "tile",
+        "lane",
+        "word"
+      ],
+      "tensor": {
+        "seq_len": 32,
+        "width": 1024
+      }
+    }
+  ],
+  "team_executable_actions": []
+}

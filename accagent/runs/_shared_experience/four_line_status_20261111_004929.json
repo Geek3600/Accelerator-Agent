@@ -1,0 +1,140 @@
+{
+  "recorded_at": "2026-11-11T00:49:29.551135+08:00",
+  "goal_mhz": 150,
+  "verification_policy": "vcs_compile_only",
+  "metric_scope": "generated_kernel_synthesis; throughput remains DSE estimated, not measured on board",
+  "runs": {
+    "qwen2_0_5b_seq32_gpt61_20261107": {
+      "latest_measurement": {
+        "recorded_at_utc": "2026-11-10T15:42:12.566708+00:00",
+        "synthesis_report_time": "2026-11-10T10:41:45",
+        "timestamp_basis": "Vivado report Date (server local time, timezone unspecified)",
+        "source_sha256": "85c1da5cea0415b1432ca22cdad062a7c848af4e7705db62ba01bd783e8b9ff7",
+        "evidence_status": "source_archive_verified",
+        "clock_frequency_mhz": 106.36034886194427,
+        "measurement_scope": "generated_kernel_synthesis",
+        "metric_quality": "post_synthesis_clock_and_dse_estimated_cycles",
+        "estimated_tokens_per_second": 316.63491324805807,
+        "estimated_cycles": 10749071,
+        "resources": {
+          "bram18": 24,
+          "bram36": 358,
+          "dsp": 5078,
+          "ff": 202353,
+          "lut": 682026,
+          "uram": 214
+        },
+        "critical_path_source": "core/core/mlp/up/writeToken_reg[2]/C",
+        "critical_path_destination": "core/core/mlp/up/outputMem/memories_0/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_bram_3/DINADIN[25]",
+        "agent_repair_summary": "Restructure the active shift-aware integer requantizer on Vivado's mlp/up writeToken-to-outputMem path. For the current INT32-or-narrower operands, replace quotient reconstruction/subtraction with a discarded-bit mask, and replace the wide left-shift, wide sign restoration and signed saturation chain with exact unsigned magnitude-limit tests and output-width sign restoration. This changes the reported operator internally, rather than inserting boundary registers. Arithmetic precision, nearest-even rounding, signed saturation, scale exponents and interfaces are preserved; wider hypothetical operands retain the original implementation. Added latency is zero, arithmetic II is unchanged, and the enclosing Linear sWrite launch interval remains one token beat per cycle. The unique replacement anchor was checked against the supplied Common.scala snapshot. This targets 150 MHz but does not claim timing closure or compilation acceptance.",
+        "agent_repair_report": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/qwen2_0_5b_seq32_gpt61_20261107/backend_board/timing_optimization/f1f6b802f982296705a3/application.json",
+        "source_archive": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/qwen2_0_5b_seq32_gpt61_20261107/backend_board/measurements/85c1da5cea0415b1432ca22cdad062a7c848af4e7705db62ba01bd783e8b9ff7/app_shell_generated_vivado_closure.tar.gz",
+        "runtime_report": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/qwen2_0_5b_seq32_gpt61_20261107/backend_board/measurements/85c1da5cea0415b1432ca22cdad062a7c848af4e7705db62ba01bd783e8b9ff7/app_shell_runtime_vivado.json",
+        "timing_report": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/qwen2_0_5b_seq32_gpt61_20261107/backend_board/measurements/85c1da5cea0415b1432ca22cdad062a7c848af4e7705db62ba01bd783e8b9ff7/app_shell_synth_timing.rpt",
+        "utilization_report": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/qwen2_0_5b_seq32_gpt61_20261107/backend_board/measurements/85c1da5cea0415b1432ca22cdad062a7c848af4e7705db62ba01bd783e8b9ff7/app_shell_synth_utilization.rpt",
+        "measurement_index": 10,
+        "new_best_clock": true,
+        "best_clock_so_far_mhz": 106.36034886194427
+      },
+      "current_remote_attempt": "2872667_1794325593823558091",
+      "current_vcs_status": "pass",
+      "compile_returncode": 0,
+      "simulation_skipped": true,
+      "current_manifest_source_sha_check": "all matching at this check",
+      "inflight_report_not_yet_available": true
+    },
+    "tinyllama_1_1b_seq32_gpt61_20261107": {
+      "latest_measurement": {
+        "recorded_at_utc": "2026-11-10T15:32:50.635111+00:00",
+        "synthesis_report_time": "2026-11-10T10:32:29",
+        "timestamp_basis": "Vivado report Date (server local time, timezone unspecified)",
+        "source_sha256": "a17f43c0e2a375cb3ec84f46a15738f4c9744f1df3f7c8c95e003777657b4527",
+        "evidence_status": "source_archive_verified",
+        "clock_frequency_mhz": 124.47099825740604,
+        "measurement_scope": "generated_kernel_synthesis",
+        "metric_quality": "post_synthesis_clock_and_dse_estimated_cycles",
+        "estimated_tokens_per_second": 100.51593659179083,
+        "estimated_cycles": 39626273,
+        "resources": {
+          "bram18": 28,
+          "bram36": 406,
+          "dsp": 3920,
+          "ff": 186824,
+          "lut": 510113,
+          "uram": 150
+        },
+        "critical_path_source": "core/core/qkv/projectedMemory/memories_1/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_1/CLKARDCLK",
+        "critical_path_destination": "core/core/qkv/kValues_0_reg[0]/D",
+        "agent_repair_summary": "Restructured the active signed-magnitude saturation comparison used by the integer QKV shift-aware requantizer. Instead of comparing the full 128-bit scaled magnitude against a narrow output limit, the logic now first detects any nonzero bits above the output width, then compares only the low output-width bits. This preserves saturation semantics while targeting the comparator/carry logic in the reported projected-memory-to-QKV-value path. No VCS or fresh Vivado timing result is supplied; the 150 MHz target is not established.",
+        "agent_repair_report": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/tinyllama_1_1b_seq32_gpt61_20261107/backend_board/timing_optimization/95cbea095355e16f1bb8/application.json",
+        "source_archive": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/tinyllama_1_1b_seq32_gpt61_20261107/backend_board/measurements/a17f43c0e2a375cb3ec84f46a15738f4c9744f1df3f7c8c95e003777657b4527/app_shell_generated_vivado_closure.tar.gz",
+        "runtime_report": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/tinyllama_1_1b_seq32_gpt61_20261107/backend_board/measurements/a17f43c0e2a375cb3ec84f46a15738f4c9744f1df3f7c8c95e003777657b4527/app_shell_runtime_vivado.json",
+        "timing_report": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/tinyllama_1_1b_seq32_gpt61_20261107/backend_board/measurements/a17f43c0e2a375cb3ec84f46a15738f4c9744f1df3f7c8c95e003777657b4527/app_shell_synth_timing.rpt",
+        "utilization_report": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/tinyllama_1_1b_seq32_gpt61_20261107/backend_board/measurements/a17f43c0e2a375cb3ec84f46a15738f4c9744f1df3f7c8c95e003777657b4527/app_shell_synth_utilization.rpt",
+        "measurement_index": 15,
+        "new_best_clock": true,
+        "best_clock_so_far_mhz": 124.47099825740604
+      },
+      "current_remote_attempt": "2867556_1794325021098584840",
+      "current_vcs_status": "pass",
+      "compile_returncode": 0,
+      "simulation_skipped": true,
+      "current_manifest_source_sha_check": "all matching at this check",
+      "inflight_report_not_yet_available": true
+    },
+    "gemma3_1b_seq32_gpt61_20261107": {
+      "latest_measurement": {
+        "recorded_at_utc": "2026-11-10T14:46:35.987506+00:00",
+        "synthesis_report_time": "2026-11-10T09:46:04",
+        "timestamp_basis": "Vivado report Date (server local time, timezone unspecified)",
+        "source_sha256": "a52e48dcb9510a6731ee48298d8fbd11b6c4683971a2db74751a8f41521bea47",
+        "evidence_status": "source_archive_verified",
+        "clock_frequency_mhz": 48.5649069982031,
+        "measurement_scope": "generated_kernel_synthesis",
+        "metric_quality": "post_synthesis_clock_and_dse_estimated_cycles",
+        "estimated_tokens_per_second": 76.82174550437102,
+        "estimated_cycles": 20229650,
+        "resources": {
+          "bram18": 23,
+          "bram36": 411,
+          "dsp": 4240,
+          "ff": 188347,
+          "lut": 1106494,
+          "uram": 413
+        },
+        "critical_path_source": "core/core/postAttnNorm/core/core/inputMem/memories_0/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0/CLKARDCLK",
+        "critical_path_destination": "core/core/postAttnNorm/core/core/outputReg_3_reg[0]/S",
+        "agent_repair_summary": "Partition the actual reported integer normalization reciprocal cone into 25 registered restoring-division stages, rather than registering around the unchanged divider. The active configuration is IntegerVectorNorm, not FloatingVectorNorm. Each stage performs one quotient-bit compare/subtract; denominator and quotient state travel together. The existing reciprocal FSM waits for pipeline fill before consuming the result. Arithmetic II is 1 cycle, normalization beat launch spacing remains 3 cycles without output stalls, and reciprocal setup adds 25 cycles per normalized vector. No precision, array, reuse, DDR, ABI, reset-valid, or timing-constraint changes are made. The single replacement anchor occurs once in the supplied Norm.scala snapshot. Achievement of the requested 150 MHz requires fresh timing evidence.",
+        "agent_repair_report": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_1b_seq32_gpt61_20261107/backend_board/timing_optimization/2fc385c45f337e2f527b/application.json",
+        "source_archive": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_1b_seq32_gpt61_20261107/backend_board/measurements/a52e48dcb9510a6731ee48298d8fbd11b6c4683971a2db74751a8f41521bea47/app_shell_generated_vivado_closure.tar.gz",
+        "runtime_report": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_1b_seq32_gpt61_20261107/backend_board/measurements/a52e48dcb9510a6731ee48298d8fbd11b6c4683971a2db74751a8f41521bea47/app_shell_runtime_vivado.json",
+        "timing_report": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_1b_seq32_gpt61_20261107/backend_board/measurements/a52e48dcb9510a6731ee48298d8fbd11b6c4683971a2db74751a8f41521bea47/app_shell_synth_timing.rpt",
+        "utilization_report": "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/gemma3_1b_seq32_gpt61_20261107/backend_board/measurements/a52e48dcb9510a6731ee48298d8fbd11b6c4683971a2db74751a8f41521bea47/app_shell_synth_utilization.rpt",
+        "measurement_index": 5,
+        "new_best_clock": true,
+        "best_clock_so_far_mhz": 48.5649069982031
+      },
+      "current_remote_attempt": "2837832_1794322350147696935",
+      "current_vcs_status": "pass",
+      "compile_returncode": 0,
+      "simulation_skipped": true,
+      "current_manifest_source_sha_check": "all matching at this check",
+      "inflight_report_not_yet_available": true
+    },
+    "gpt2_medium_seq32_glm53_20261107": {
+      "status": "same_stage6_anchored_compile_repair",
+      "live_transaction": {
+        "owner_pid": 2893129,
+        "status": "inflight",
+        "attempt_count": 1,
+        "prompt_bytes": 729705,
+        "updated_at": "2026-11-10T16:48:29Z"
+      },
+      "last_compile_status": "fail: identifier declaration order",
+      "manifest_exists": true,
+      "source_count": 50,
+      "restart_record": "accagent/runs/gpt2_medium_seq32_glm53_20261107/agent/monitoring/anchored_compile_repair_20261111_004749/reload_record.json",
+      "frequency_available": false
+    }
+  }
+}

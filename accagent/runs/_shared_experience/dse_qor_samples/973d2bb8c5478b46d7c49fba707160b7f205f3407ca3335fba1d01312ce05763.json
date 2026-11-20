@@ -1,0 +1,284 @@
+{
+  "board": {
+    "fpga_part": "xcvu9p_CIV-flgb2104-2-i",
+    "resource_budget": {
+      "bram": 2160,
+      "bram18": 4320,
+      "bram36": 2160,
+      "dsp": 6840,
+      "ff": 2364480,
+      "lut": 1182240,
+      "uram": 960
+    },
+    "resource_budget_source": "real_vivado_target_part_probe"
+  },
+  "clock_frequency_mhz": 157.43073047858942,
+  "cost_features": {
+    "family": "qwen2",
+    "linear_schedule": "context_interleaved_fp_pipeline_v1",
+    "memory_implementation": [
+      "xpm_uram",
+      "xpm_bram",
+      "xpm_uram"
+    ],
+    "parameters": {
+      "activation_banks": 1,
+      "activation_memory": "xpm_bram",
+      "burst_beats": 1,
+      "clock_target_m_hz": 250,
+      "clock_target_mhz": 250,
+      "compute_array_cols": 16,
+      "compute_array_rows": 8,
+      "compute_backend": "vivado_fp_ip",
+      "design_id": "qwen2",
+      "elem_bits": 16,
+      "fifo_depth": 4,
+      "fifo_memory": "xpm_bram",
+      "head_dim": 64,
+      "hidden_size": 896,
+      "input_bits": 32,
+      "intermediate_size": 4864,
+      "lanes": 16,
+      "large_cache_memory": "xpm_uram",
+      "max_seq_len": 16,
+      "model_type": "qwen2",
+      "num_kv_heads": 2,
+      "num_q_heads": 14,
+      "output_bits": 32,
+      "pipeline_depth": 1,
+      "target_max_seq_len": 16,
+      "weight_banks": 1,
+      "weight_banks_by_role": {
+        "weight": 1,
+        "weight_attn_out": 1,
+        "weight_mlp_down": 1,
+        "weight_mlp_gate": 1,
+        "weight_mlp_up": 1,
+        "weight_qkv": 1,
+        "weight_qkv_bias": 1
+      },
+      "weight_memory": "xpm_uram"
+    },
+    "part": "xcvu9p_CIV-flgb2104-2-i",
+    "precision_bits": 16,
+    "proxies": {
+      "bram18": 180,
+      "bram36": 180,
+      "clock_frequency_mhz": 1.0,
+      "cycles": 1077661224.0,
+      "dsp": 768,
+      "ff": 77184,
+      "lut": 2400,
+      "uram": 1032
+    },
+    "workload": {
+      "batch_size": 1,
+      "hidden_size": 896,
+      "intermediate_size": 4864,
+      "lanes": 16,
+      "model_layers": 24,
+      "processed_tokens": 16,
+      "runtime_sequence": [
+        "load input_tokens",
+        "load layer 0 weights into weight_buffer_a",
+        "start accelerator",
+        "prefetch next layer weights into inactive weight buffer while active layer computes",
+        "poll runtime_status or done",
+        "read output_tokens"
+      ],
+      "sequence_length": 16,
+      "weight_transfer_rules": [
+        "all addresses are byte offsets from the accelerator DDR window base",
+        "all transfer byte counts are aligned to axi_data_width_bits",
+        "weight_buffer_a and weight_buffer_b alternate by layer to allow prefetch of layer N+1 while layer N computes"
+      ]
+    }
+  },
+  "design_parameters_source": {
+    "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedDesignParams.scala": "package spatialaccagent.generated\n\nimport spatialaccagent.templates._\n\nobject GeneratedDesignParams {\n  val designId: String = \"qwen2\"\n  val modelType: String = \"qwen2\"\n  val targetMaxSeqLen: Int = 16\n  val clockTargetMHz: Int = 250\n  val inputBits: Int = 32\n  val elemBits: Int = 16\n  val outputBits: Int = 32\n  val lanes: Int = 16\n  val computeArrayRows: Int = 8\n  val computeArrayCols: Int = 16\n  val computeBackend: String = \"vivado_fp_ip\"\n  val weightMemory: String = \"xpm_uram\"\n  val activationMemory: String = \"xpm_bram\"\n  val fifoMemory: String = \"xpm_bram\"\n  val largeCacheMemory: String = \"xpm_uram\"\n  val fifoDepth: Int = 4\n  val weightBanks: Int = 1\n  val activationBanks: Int = 1\n  val weightBanksByRole: Map[String, Int] = Map(\"weight\" -> 1, \"weight_attn_out\" -> 1, \"weight_mlp_down\" -> 1, \"weight_mlp_gate\" -> 1, \"weight_mlp_up\" -> 1, \"weight_qkv\" -> 1, \"weight_qkv_bias\" -> 1)\n  val burstBeats: Int = 1\n  val pipelineDepth: Int = 1\n  val operatorSequence: Seq[String] = Seq(\"rms_norm_1\", \"self_attention\", \"residual_add_1\", \"rms_norm_2\", \"mlp_gate_proj\", \"mlp_up_proj\", \"activation_mul\", \"mlp_down_proj\", \"residual_add_2\")\n  val stageIds: Seq[String] = Seq(\"stage_00_rms_norm_1\", \"stage_01_self_attention\", \"stage_02_residual_add_1\", \"stage_03_rms_norm_2\", \"stage_04_mlp_gate_proj\", \"stage_05_mlp_up_proj\", \"stage_06_activation_mul\", \"stage_07_mlp_down_proj\", \"stage_08_residual_add_2\")\n  val params = LlamaStyleBlockParams(batchSize = 16, computeArrayCols = 16, computeArrayRows = 8, elemBits = 16, headDim = 64, hiddenSize = 896, inputBits = 32, intermediateSize = 4864, kvHeads = 2, lanes = 16, maxSeqLen = 16, outputBits = 32, qHeads = 14)\n}\n"
+  },
+  "evidence_paths": [
+    "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/formal_20260922_r432_qwen2/backend_board/case_diagnostics/app_shell_runtime_vivado.json",
+    "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/formal_20260922_r432_qwen2/app_shell_runtime_bitstream/app_shell_synth_utilization.rpt",
+    "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/formal_20260922_r432_qwen2/app_shell_runtime_bitstream/app_shell_synth_timing.rpt",
+    "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/formal_20260922_r432_qwen2/app_shell_runtime_bitstream/app_shell_synth_power.rpt",
+    "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/formal_20260922_r432_qwen2/backend_board/qor/source_cycle_analysis.json",
+    "/home/remote/workspace/Qwen2-Accelerator/accagent/runs/formal_20260922_r432_qwen2/backend_board/qor/qor_metrics.json"
+  ],
+  "measurement_scope": "generated_kernel_synthesis",
+  "metric_quality": "post_synthesis_clock_and_analytical_source_cycles",
+  "parameters": {
+    "activation_banks": 1,
+    "activation_memory": "xpm_bram",
+    "burst_beats": 1,
+    "clock_target_m_hz": 250,
+    "clock_target_mhz": 250,
+    "compute_array_cols": 16,
+    "compute_array_rows": 8,
+    "compute_backend": "vivado_fp_ip",
+    "design_id": "qwen2",
+    "elem_bits": 16,
+    "fifo_depth": 4,
+    "fifo_memory": "xpm_bram",
+    "head_dim": 64,
+    "hidden_size": 896,
+    "input_bits": 32,
+    "intermediate_size": 4864,
+    "lanes": 16,
+    "large_cache_memory": "xpm_uram",
+    "max_seq_len": 16,
+    "model_type": "qwen2",
+    "num_kv_heads": 2,
+    "num_q_heads": 14,
+    "output_bits": 32,
+    "pipeline_depth": 1,
+    "target_max_seq_len": 16,
+    "weight_banks": 1,
+    "weight_banks_by_role": {
+      "weight": 1,
+      "weight_attn_out": 1,
+      "weight_mlp_down": 1,
+      "weight_mlp_gate": 1,
+      "weight_mlp_up": 1,
+      "weight_qkv": 1,
+      "weight_qkv_bias": 1
+    },
+    "weight_memory": "xpm_uram"
+  },
+  "performance_estimation": {
+    "assumptions": [
+      "The supplied synthesis evidence binds this analysis to archive SHA-256 2e55182fa96b5ff0d581d328cb44934247a17e077f7ca756536ceaff1594ff5c; no further synthesis attestation is needed.",
+      "The configured sequence is 16 positions with batch size 1, hidden size 896, and 16 lanes. Thus processed_tokens is 16, and one hidden vector is 56 ingress beats.",
+      "The single physical Qwen2Block is reused sequentially for 24 model layers. Initial layer weights are preloaded, external backpressure and memory-transfer stalls are excluded, and inter-layer handoff is assumed to be zero.",
+      "For the nominal schedule, accepted serialized-IP requests see result-ready high; the stated Vivado C_Latency values bound their issue/wait service. Tagged add/multiply pipelines use the configured C_Rate=1 and their actual source contexts and reductions.",
+      "The cycle accounting uses the source FSM issue, wait, memory-read, and transfer transitions. This is an analytical projection, not a measured run; no simulation was executed."
+    ],
+    "counter_source": "source_schedule_analysis",
+    "derivation": "The emitted GeneratedAcceleratorTop instantiates Qwen2Block. Its connected path is RMSNorm1 -> QKVProjection -> RoPE -> AttentionGQA -> ResidualAdd1 -> RMSNorm2 -> GatedMLP (gate and up Linear projections, SiLU Activation, ElementwiseMul, down Linear projection) -> ResidualAdd2 -> io_out. The estimate follows that complete path. The supplied matching expanded Linear and AttentionGQA RTL is omitted only because it exceeds the size limit; their loop, counter, and handshake behavior is taken from the included matching Linear.scala and Attention.scala sources, with connectivity checked against Qwen2Block.sv.\n\nRuntime configuration gives 896 hidden elements and 16 lanes: 896/16=56 beats per token. The generated top uses 512-bit streams, or 16 32-bit ingress elements per beat. Workload batch_size*sequence_length=1*16, so processed_tokens=16 (not multiplied by 24 layers). The accepted start can coincide with the first RMSNorm input handshake: the wrapper asserts active for io.start and RMSNorm1 is ready with its preloaded weights. Therefore start_to_first_input_cycles=0.\n\nPer-stage service/fill/drain accounting (cycles; terms below count source loop work and serialized FSM service, not a sum of every operator's latency for every token):\n- RMSNorm1: collect 56 beats; accumulation performs 56 memory read/capture pairs and 896 serial lane iterations. Each lane pairs the sum add with the square multiply, then performs the square-sum add: 896*(12+1+12+1)=23,296 cycles. Final mean/epsilon/sqrt/reciprocal issue-waits contribute 10+13+30+30=83. The 56-beat normalize/scale/emit loop is 56*(2+10+10+1)=1,288. Including 56 collection cycles gives a source service interval of 24,835 cycles between token starts absent downstream stalls.\n- QKV Linear: dimensions are 896->1152, with 56 input rows, 72 output beats, 8 MAC rows, and 16 MAC columns. The source has 2 output groups per beat, 144 groups/token, and 56 terms/group. The context count is highestOneBit(min(56,16))=16. Each group accounts for 56 one-per-cycle read requests, 69 cycles for multiplier/reduction/accumulator fill and final drain (mul latency 9, four reduction-add levels at 12, accumulator add at 12), and 75 cycles for the five context-fold phases (8,4,2,1, and bias; C_Rate=1 with the phase drains). Including the group setup/read control gives 202 cycles/group, or 144*202=29,088 cycles/token. The two input banks let RMSNorm1 run ahead initially. Once their actual reuse condition is reached, they backpressure RMSNorm1; applying the bank-release and RMSNorm emit-drain conditions yields the RLE ingress gaps below.\n- QKV reformat and RoPE: QKV framing is 14 heads*8 beats. QKVProjection reads three fields of eight scalar lanes (48 read/capture cycles per output beat plus its output handshake), then RoPE handles eight serialized lanes per beat using its memory reads, parallel multiply issue/wait, and add issue/wait. The combined per-token reformat/RoPE service is about 72 collection cycles + 5,488 reformat cycles + 26,096 RoPE cycles =31,656 cycles. This path is slower than the QKV Linear, but its projected-memory and two Linear output banks absorb the finite backlog for this 16-token ingress sequence; it does not create an additional ingress gap in the listed run. It is included in the first-token fill and attention-input timing.\n- AttentionGQA and Softmax: collection is sequence-framed, but the RTL starts workRow when tokenReady(workRow) is set; it does not wait for collectionClosed before row 0. With QKV/RoPE delivery, each row is ready before the preceding, much longer attention row finishes. For row r, the actual causal score loop is 14 heads*(r+1) keys*64 dimensions. Each dimension serializes fp_mul (9-cycle IP) and fp_add (12-cycle IP); including issue/wait transitions, memory read/capture, score scaling, and write gives about 1,614 cycles/key/head. Context uses 64 parallel multiply lanes and 64 parallel add lanes, with read/capture and accumulator write, about 30 cycles/key/head. The output projection is 896->896 with 14 input beats, 56 output beats, two output groups, and the same 202-cycle group service: 112*202=22,624 cycles/row. Softmax scans all 16 causal/masked positions and emits all 16 probabilities; its single-lane probability conversion/divide loop is retained. Summing row loop bounds, projection, softmax, and context/finalize control gives about 3,512,136 cycles from row-0 availability through the final attention output. The full sequence has been collected before this work finishes; there is no additional post-collection barrier wait.\n- ResidualAdd1 and RMSNorm2: ResidualAdd1 joins the computed attention beat with the stored input residual through ready/valid FIFOs and 16 parallel adds. RMSNorm2 then repeats the 56-beat collection, 896-lane reduction, final normalization, and emission service. Its output is the actual input to the MLP, not a terminus at attention.\n- GatedMLP and final residual: gate and up projections run concurrently. Each 896->4864 Linear has 608 groups/token at 202 cycles/group, 122,816 cycles. SiLU is serialized over 16 lanes for each of 304 intermediate beats: each lane's classify, conversion, ROM, product conversion, and scale sequence is 42 cycles; including beat accept/emit gives 304*(16*42+2)=204,896 cycles. ElementwiseMul joins the independently buffered up and activated streams; its 16-lane multiply and FIFO service are overlapped with activation, with the final product requiring about 11 cycles. The 4864->896 down Linear has 112 output groups; 304 read terms, 69 arithmetic fill/drain, 75 fold, and 2 setup cycles give 450/group, or 50,400 cycles. ResidualAdd2 is the final 56-beat join and transfer, about 56*14=784 cycles. Thus the tail is included through the block's actual io_out driver.\n\nThe first QKV/RoPE token becomes available about 85,579 cycles after first ingress. The attention row calculation totals about 3,512,136 cycles; the preceding row work makes all required query tokens ready before their row is selected. The final-token-relative attention completion is therefore approximately 85,579+3,512,136-404,267=3,193,448 cycles. Adding the final residual/RMS2/MLP/down-projection/residual tail (approximately 404,415 cycles from the final attention beat) gives last_token_start_to_completion_cycles=3,597,863. This drain is relative to the actual final ingress token start, not an idealized start.\n\nThe ingress intervals cover exactly 15 gaps: 7*24,835, then 26,806 when the nested QKV Linear input-bank release delays the RMSNorm output drain, then 7*29,088 at the QKV Linear service interval. Their sum is 404,267 cycles. The steady-state ingress II is the QKV Linear's 29,088-cycle service interval for this buffered 16-token run. The framework's per-layer expression is 0+404,267+3,597,863=4,002,130 cycles; sequential reuse for 24 layers projects 96,051,120 cycles under the stated zero-handoff assumption.",
+    "estimate_scope": "generated_pipeline_schedule",
+    "latency_cycles": 96051120,
+    "measurement_kind": "analytical_estimate",
+    "model_layers": 24,
+    "performance_model": "single_block_reuse_operator_token_pipeline_v2_no_handoff",
+    "pipeline_schedule": {
+      "exposed_layer_handoff_cycles": 0,
+      "last_token_start_to_completion_cycles": 3597863,
+      "mode": "single_block_reuse",
+      "operator_token_overlap": true,
+      "start_to_first_input_cycles": 0,
+      "steady_state_ii_cycles": 29088,
+      "token_start_intervals": [
+        {
+          "cycles": 24835,
+          "repetitions": 7
+        },
+        {
+          "cycles": 26806,
+          "repetitions": 1
+        },
+        {
+          "cycles": 29088,
+          "repetitions": 7
+        }
+      ]
+    },
+    "processed_tokens": 16,
+    "schedule_policy": {
+      "external_backpressure_cycles": 0,
+      "initial_layer_weights_preloaded": true,
+      "mode": "nominal_no_stall",
+      "model_layer_execution": "sequential_reuse_of_the_same_block",
+      "next_layer_weight_prefetch": "overlapped_with_current_layer_compute",
+      "operator_initiation_interval_source": "synthesized_ip_configuration_and_rtl",
+      "performance_model": "single_block_reuse_operator_token_pipeline_v2_no_handoff",
+      "physical_transformer_blocks": 1
+    },
+    "source_fingerprint": "973d2bb8c5478b46d7c49fba707160b7f205f3407ca3335fba1d01312ce05763",
+    "source_refs": [
+      "generated/chisel/runtime/runtime_config.json",
+      "generated/chisel/scripts/gen_xilinx_fp_ips_23.tcl",
+      "generated/chisel/simulation/fpga_ip_modules.txt",
+      "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedDesignParams.scala",
+      "generated/chisel/src/main/scala/spatialaccagent/generated/GeneratedAcceleratorTop.scala",
+      "generated/chisel/src/main/scala/spatialaccagent/templates/Attention.scala",
+      "generated/chisel/src/main/scala/spatialaccagent/templates/Linear.scala",
+      "generated/chisel/src/main/scala/spatialaccagent/templates/Norm.scala",
+      "generated/chisel/src/main/scala/spatialaccagent/templates/QKVProjection.scala",
+      "generated/chisel/src/main/scala/spatialaccagent/templates/RoPE.scala",
+      "generated/chisel/src/main/scala/spatialaccagent/templates/Softmax.scala",
+      "generated/chisel/src/main/scala/spatialaccagent/templates/Residual.scala",
+      "generated/chisel/src/main/scala/spatialaccagent/templates/FFN.scala",
+      "generated/chisel/src/main/scala/spatialaccagent/templates/Activation.scala",
+      "generated/chisel/src/main/scala/spatialaccagent/templates/Elementwise.scala",
+      "generated/chisel/src/main/scala/spatialaccagent/templates/PhysicalResources.scala",
+      "generated/chisel/vivado/GeneratedAcceleratorTop.sv",
+      "generated/chisel/vivado/GeneratedAxiDdrTop.sv",
+      "generated/chisel/vivado/Qwen2Block.sv",
+      "generated/chisel/vivado/RMSNorm.sv",
+      "generated/chisel/vivado/VectorNorm.sv",
+      "generated/chisel/vivado/QKVProjection.sv",
+      "generated/chisel/vivado/RoPE.sv",
+      "generated/chisel/vivado/Softmax.sv",
+      "generated/chisel/vivado/GatedMLP.sv",
+      "generated/chisel/vivado/Activation.sv",
+      "generated/chisel/vivado/ElementwiseMul.sv",
+      "generated/chisel/vivado/ResidualAdd.sv",
+      "generated/chisel/vivado/PhysicalFp32Add.sv",
+      "generated/chisel/vivado/PhysicalFp32Mul.sv",
+      "generated/chisel/vivado/PhysicalFp32Div.sv",
+      "generated/chisel/vivado/PhysicalFp32Sqrt.sv",
+      "generated/chisel/vivado/PhysicalFp32Sub.sv",
+      "generated/chisel/vivado/PhysicalFp32CompareLt.sv",
+      "generated/chisel/vivado/PhysicalFp32AddPipeline.sv",
+      "generated/chisel/vivado/PhysicalFp32MulPipeline.sv",
+      "generated/chisel/vivado/PhysicalFp32ToSigned.sv",
+      "generated/chisel/vivado/PhysicalSignedToFp32.sv",
+      "generated/chisel/vivado/PhysicalFp16ToFp32.sv",
+      "generated/chisel/vivado/PhysicalFp32ToFp16.sv",
+      "generated/chisel/vivado/PhysicalStreamFifo.sv",
+      "generated/chisel/vivado/PhysicalStreamFifo_11.sv",
+      "generated/chisel/vivado/PhysicalStreamFifo_2.sv",
+      "generated/chisel/vivado/PhysicalStreamFifo_3.sv",
+      "generated/chisel/vivado/PhysicalSimpleDualPortMemory.sv",
+      "generated/chisel/vivado/PhysicalSimpleDualPortMemory_17.sv"
+    ],
+    "status": "pass",
+    "synthesis_source_archive_sha256": "2e55182fa96b5ff0d581d328cb44934247a17e077f7ca756536ceaff1594ff5c"
+  },
+  "performance_model": "single_block_reuse_operator_token_pipeline_v2_no_handoff",
+  "performance_tokens_per_second": 26.224490538553123,
+  "resources": {
+    "bram18": 31,
+    "bram36": 1204,
+    "dsp": 3101,
+    "ff": 608045,
+    "lut": 364708,
+    "uram": 855
+  },
+  "schema_version": "spatialaccagent.dse_qor_sample.v1",
+  "source_fingerprint": "973d2bb8c5478b46d7c49fba707160b7f205f3407ca3335fba1d01312ce05763",
+  "synthesis_source_archive_sha256": "2e55182fa96b5ff0d581d328cb44934247a17e077f7ca756536ceaff1594ff5c",
+  "timestamp": "2026-10-16T13:44:33.938552Z",
+  "workload": {
+    "batch_size": 1,
+    "hidden_size": 896,
+    "intermediate_size": 4864,
+    "lanes": 16,
+    "model_layers": 24,
+    "processed_tokens": 16,
+    "runtime_sequence": [
+      "load input_tokens",
+      "load layer 0 weights into weight_buffer_a",
+      "start accelerator",
+      "prefetch next layer weights into inactive weight buffer while active layer computes",
+      "poll runtime_status or done",
+      "read output_tokens"
+    ],
+    "sequence_length": 16,
+    "weight_transfer_rules": [
+      "all addresses are byte offsets from the accelerator DDR window base",
+      "all transfer byte counts are aligned to axi_data_width_bits",
+      "weight_buffer_a and weight_buffer_b alternate by layer to allow prefetch of layer N+1 while layer N computes"
+    ]
+  }
+}

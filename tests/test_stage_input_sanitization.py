@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -15,6 +16,7 @@ from accagent.framework.stage_input import (
     merge_board_profile_field_evidence,
     merge_tool_profile_bindings,
     parse_vivado_resource_budget,
+    prompt_field_evidence_summary,
     redact_sensitive_text,
     remote_probe_workdir_expr,
     sanitize_llm_payload,
@@ -25,6 +27,102 @@ from accagent.framework.stage_input import (
 
 
 class StageInputSanitizationTest(unittest.TestCase):
+    @staticmethod
+    def board_input_case() -> dict:
+        return {
+            "task_card": {"target_model": "generic-decoder", "design_goal": "compile and synthesize"},
+            "model_config": {"block": {"operator_sequence": ["attention"]}},
+            "numeric_policy": {
+                "default_rules": {"weight_dtype": "int4", "activation_dtype": "int8", "acc_dtype": "int32", "scale_dtype": "int32", "rounding": "nearest_even", "saturation": True},
+                "tolerance": {"stage": {"enabled": True}, "system": {"enabled": True}, "comparison": {"atol": 1, "rtol": 1, "max_mismatch_fraction": 1}},
+            },
+            "template_metadata": {"templates": [{"id": "attention"}]},
+            "design_space": {"search_params": {"lanes": [8]}},
+            "target_board_profile": {
+                "board": {"fpga_part": "target-part"},
+                "memory_system": {"hbm_channels": 32, "axi_data_width_bits": 256, "axi_data_bytes": 32},
+                "runtime_interface": {"control_protocol": "axi_lite"},
+            },
+            "field_evidence": {"policy": {"llm_semantic_confirmation_required": True}, "evidence": []},
+            "case_adapter": {"status": "ready"},
+            "tool_profile": {"tools": [{"name": name, "scope": "remote", "host": "eda@example.org", "executable": f"/eda/{name}"} for name in ("vivado", "vcs")]},
+            "tool_availability": {"tools": [{"name": name, "available": True, "version_probe": {"ok": True}, "flow_probe": {"ok": True}} for name in ("vivado", "vcs")]},
+        }
+
+    def test_compile_only_intake_accepts_hbm_without_host_runtime_script(self) -> None:
+        with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}):
+            errors, _ = stage_input.validate_inputs(self.board_input_case())
+        self.assertEqual(errors, [])
+
+    def test_runtime_intake_still_requires_host_runtime_script(self) -> None:
+        with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": "full_semantic_simulation"}):
+            errors, _ = stage_input.validate_inputs(self.board_input_case())
+        self.assertEqual(errors, ["target_board_profile.runtime_interface missing board_run_command"])
+
+    def test_compile_only_intake_still_requires_memory_topology(self) -> None:
+        items = self.board_input_case()
+        items["target_board_profile"]["memory_system"].pop("hbm_channels")
+        with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": "vcs_compile_only"}):
+            errors, _ = stage_input.validate_inputs(items)
+        self.assertEqual(errors, ["target_board_profile.memory_system missing memory channel count"])
+
+    def test_board_runtime_tool_requirement_matches_verification_policy(self) -> None:
+        for policy, required in (("vcs_compile_only", False), ("full_semantic_simulation", True)):
+            with self.subTest(policy=policy), tempfile.TemporaryDirectory() as tmp:
+                input_dir = Path(tmp) / "input"
+                input_dir.mkdir()
+                with patch.dict("os.environ", {"SPATIALACC_VERIFICATION_POLICY": policy}):
+                    protocols = stage_input.prepare_tool_protocols(
+                        {"runtime_interface": {}}, {}, "", Path(tmp), input_dir, {},
+                    )
+                runtime = next(item for item in protocols["tools"] if item["name"] == "board_runtime")
+                self.assertEqual(runtime["required"], required)
+                self.assertEqual(runtime["execution"]["argv"], [])
+
+    def test_board_profile_schema_requires_downstream_axi_field_names(self) -> None:
+        profile = {
+            "schema_version": "test", "board": {}, "shell": {},
+            "memory_system": {"canonical_axi_data_width_bits": 512, "canonical_axi_bytes_per_beat": 64},
+            "runtime_interface": {}, "board_pass_criteria": {}, "notes": [],
+        }
+        with self.assertRaisesRegex(ValueError, "axi_data_width_bits"):
+            stage_input.validate_schema(profile, stage_input.BOARD_PROFILE_SCHEMA)
+        profile["memory_system"].update(axi_data_width_bits=512, axi_data_bytes=64)
+        stage_input.validate_schema(profile, stage_input.BOARD_PROFILE_SCHEMA)
+
+    def test_board_evidence_summary_retains_all_source_backed_interface_facts(self) -> None:
+        evidence = {
+            "policy": {"llm_semantic_confirmation_required": True},
+            "evidence": [
+                {"field": "board.fpga_part", "value": "xcu280-fsvh2892-2L-e", "source": "board.md", "chunk_id": "board:1", "excerpt": "U280"},
+                {"field": "memory_system.hbm_interface", "value": {"default_pseudo_channels": 32, "per_channel_data_width_bits": 256}, "source": "shell.sv", "chunk_id": "board:2", "excerpt": "hbm interface"},
+                {"field": "memory_system.gamma_interface", "value": {"data_width_bits": 512}, "source": "shell.sv", "chunk_id": "board:2", "excerpt": "gamma interface"},
+                {"field": "board.clock_reset_domains", "value": [{"clock": "core_clk", "reset": "core_rst_n"}], "source": "shell.sv", "chunk_id": "board:2", "excerpt": "clock"},
+            ],
+        }
+
+        summary = prompt_field_evidence_summary(evidence)
+        fields = {item["field"] for item in summary["selected_fields"]}
+        self.assertTrue({"board.fpga_part", "memory_system.hbm_interface", "memory_system.gamma_interface", "board.clock_reset_domains"} <= fields)
+        hbm = next(item for item in summary["selected_fields"] if item["field"] == "memory_system.hbm_interface")
+        self.assertEqual(hbm["evidence"][0]["value"]["per_channel_data_width_bits"], 256)
+
+    def test_board_prompt_distinguishes_core_refill_from_physical_port(self) -> None:
+        profile = {
+            "memory_system": {
+                "axi_data_width_bits": 512, "axi_data_bytes": 64,
+                "physical_interfaces": {"hbm": {"data_width_bits": 256}},
+            },
+            "runtime_interface": {}, "shell": {},
+        }
+        with patch.object(stage_input, "llm_json", return_value=profile) as llm:
+            result = stage_input.prepare_board_profile({}, {"selected_fields": []}, {}, Path("unused"))
+        prompt = llm.call_args.args[1]
+        self.assertIn("use that logical width for these two fields", prompt)
+        self.assertIn("Do not narrow core stream lanes", prompt)
+        self.assertEqual(result["memory_system"]["axi_data_width_bits"], 512)
+        self.assertEqual(result["memory_system"]["physical_interfaces"]["hbm"]["data_width_bits"], 256)
+
     def test_tool_profile_gets_original_documents_when_evidence_omits_endpoints(self) -> None:
         original = "Tool hosted on eda@example.org; executable /opt/custom/bin/vcs"
         with patch.object(stage_input, "llm_json", return_value={"tools": []}) as llm:

@@ -41,7 +41,9 @@ from accagent.framework.stage_team import (
     team_summary,
 )
 from accagent.framework.verification_evidence_contract import (
+    COMPILE_ONLY_POLICY,
     EVIDENCE_CONTRACT_VERSION,
+    active_verification_policy,
     evidence_contract_for_level,
     tool_evidence_contract_errors,
 )
@@ -1556,6 +1558,15 @@ def build_verification_gate_dag(case_adapter: dict[str, Any], run_dir: Path) -> 
     }
 
 
+def tool_protocol_is_required(name: str, spec: dict[str, Any], policy: str | None = None) -> bool:
+    selected_policy = policy or active_verification_policy()
+    if name == "board_runtime" and selected_policy == COMPILE_ONLY_POLICY:
+        return False
+    if name == "board_runtime":
+        return True
+    return bool(spec.get("required", True))
+
+
 def build_verification_artifact_contract(state: dict[str, Any], plan: dict[str, Any], run_dir: Path) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -1623,7 +1634,15 @@ def build_verification_artifact_contract(state: dict[str, Any], plan: dict[str, 
             continue
         required_tool_specs.append((role, spec))
     required_tool_names = [str(spec.get("name")) for _, spec in required_tool_specs if spec]
-    required_tool_specs.append(("board_runtime", {"name": "board_runtime"}))
+    # Board programming/runtime is deliberately deferred by the compile-only
+    # policy.  Keep the protocol in the emitted inventory for traceability,
+    # but do not turn its unconfigured placeholder into a Stage-6 blocker.
+    required_tool_specs.append(
+        (
+            "board_runtime",
+            adapter_tool(case_adapter, "board_runtime") or {"name": "board_runtime", "required": False},
+        )
+    )
     tool_status = []
     for role, adapter_spec in required_tool_specs:
         name = str(adapter_spec.get("name"))
@@ -1658,7 +1677,11 @@ def build_verification_artifact_contract(state: dict[str, Any], plan: dict[str, 
                 "evidence_status": "required_pending_execution",
             }
         )
-        if not configured:
+        required = tool_protocol_is_required(
+            name,
+            resolved_tool if isinstance(resolved_tool, dict) else {},
+        )
+        if not configured and required:
             errors.append(f"required verification tool protocol is missing or unconfigured: {name}")
         for message in role_capability_errors(role, adapter_spec):
             errors.append(f"case adapter role {role} capability contract failed: {message}")
@@ -1949,6 +1972,19 @@ def stage_worker_errors(
         or status.startswith("ready_for_")
         or (refinement_required_status and current_stage5_refinements_cover_planner)
     )
+    # A compile-only run may receive a planner response that describes the
+    # required Stage-6 refinement as "blocked_pending_stage6_refinement" even
+    # after the framework has materialized that exact bounded action.  In that
+    # case the response is a handoff for the already-created replacement
+    # contract, not a hardware failure.  Accept it only for the explicit
+    # compile-only status and only when materialization coverage is complete;
+    # full semantic runs must still report the blocker.
+    if (
+        active_verification_policy() == COMPILE_ONLY_POLICY
+        and status == "blocked_pending_stage6_refinement"
+        and current_stage5_refinements_cover_planner
+    ):
+        status_accepted = True
     if status and not status_accepted:
         errors.append(f"verification_planner_agent status is {output.get('status')}")
     risks = output.get("risks", [])
@@ -2198,13 +2234,84 @@ def compact_contract_for_planner(contract: dict[str, Any]) -> dict[str, Any]:
     leaf_nodes = [row for row in nodes if str(row.get("name") or "").startswith("leaf_stage.")]
     critical_nodes = [row for row in nodes if not str(row.get("name") or "").startswith("leaf_stage.")]
     evidence_rows = [row for row in contract.get("evidence_path_requirements", []) if isinstance(row, dict)]
+    execution_policy = (
+        contract.get("verification_execution_policy")
+        if isinstance(contract.get("verification_execution_policy"), dict)
+        else {}
+    )
+    validation_policy = str(
+        execution_policy.get("validation_policy") or active_verification_policy()
+    )
+    required_gate_names = [
+        str(gate.get("name"))
+        for gate in contract.get("required_evidence_gates", [])
+        if isinstance(gate, dict) and gate.get("name")
+    ]
+    compile_only_phases = {
+        "operator_leaf_functional",
+        "single_layer_functional",
+        "board_interface_discovery",
+        "multilayer_pipeline",
+        "board_wrapper_interface",
+        "functional_simulation",
+    }
+    compile_only_gate_names = [
+        str(row.get("name"))
+        for row in nodes
+        if str(row.get("phase") or "") in compile_only_phases and row.get("name")
+    ]
+    # The phase projection is the contract consumed by the planner.  It keeps
+    # the complete DAG visible for traceability while making the active
+    # acceptance selector unambiguous when the run deliberately uses VCS
+    # compile/elaboration/link only.
+    acceptance_selector = {
+        "validation_policy": validation_policy,
+        "current_stage": "verification_artifacts",
+        "required_gate_names": (
+            compile_only_gate_names if validation_policy == COMPILE_ONLY_POLICY else required_gate_names
+        ),
+        "required_acceptance": (
+            "successful current-source VCS compilation, elaboration, and linking for the leaf, connected-kernel, and exact-board wrapper layers"
+            if validation_policy == COMPILE_ONLY_POLICY
+            else "the full semantic simulation/runtime contract"
+        ),
+        "functional_sim_role_mode": (
+            "compile_only" if validation_policy == COMPILE_ONLY_POLICY else "full_semantic_simulation"
+        ),
+        "deferred_gate_names": (
+            [name for name in required_gate_names if name not in set(compile_only_gate_names)]
+            if validation_policy == COMPILE_ONLY_POLICY
+            else []
+        ),
+        "deferred_protocol_names": ["board_runtime"] if validation_policy == COMPILE_ONLY_POLICY else [],
+        "board_runtime_configured": any(
+            isinstance(row, dict)
+            and str(row.get("name") or "") == "board_runtime"
+            and bool(row.get("configured"))
+            for row in contract.get("required_tool_protocols", [])
+        ),
+        "board_runtime_is_current_stage_blocker": validation_policy != COMPILE_ONLY_POLICY,
+        "golden_comparison_is_current_stage_acceptance": validation_policy != COMPILE_ONLY_POLICY,
+        "runtime_weight_loading_is_current_stage_acceptance": validation_policy != COMPILE_ONLY_POLICY,
+    }
+    planner_policy = dict(contract.get("policy", {})) if isinstance(contract.get("policy"), dict) else {}
+    planner_policy.update(
+        {
+            "validation_policy": validation_policy,
+            "active_acceptance_selector": acceptance_selector,
+            "compile_only_defers_board_runtime": validation_policy == COMPILE_ONLY_POLICY,
+            "compile_only_defers_golden_and_runtime_execution": validation_policy == COMPILE_ONLY_POLICY,
+        }
+    )
     return {
         "schema_version": contract.get("schema_version"),
         "status": contract.get("status"),
         "summary": contract.get("summary"),
         "errors": [compact_prompt_text(str(value), 240) for value in contract.get("errors", [])[:16]],
         "warnings": [compact_prompt_text(str(value), 240) for value in contract.get("warnings", [])[:12]],
-        "policy": contract.get("policy", {}),
+        "policy": planner_policy,
+        "acceptance_selector": acceptance_selector,
+        "verification_execution_policy": execution_policy,
         "retry_reconciliation_contract": compact_prompt_value(contract.get("retry_reconciliation_contract", {}), max_dict_depth=2, max_list_depth=1, max_items=8, max_str_len=180),
         "backtrack_contract": compact_prompt_value(contract.get("backtrack_contract", {}), max_dict_depth=2, max_list_depth=1, max_items=8, max_str_len=180),
         "case_adapter": contract.get("case_adapter", {}),
@@ -2220,6 +2327,11 @@ def compact_contract_for_planner(contract: dict[str, Any]) -> dict[str, Any]:
                 "scope": row.get("scope"),
                 "kind": row.get("kind"),
                 "configured": row.get("configured"),
+                "required_for_current_policy": tool_protocol_is_required(
+                    str(row.get("name") or ""),
+                    row,
+                    validation_policy,
+                ),
                 "evidence_status": row.get("evidence_status"),
             }
             for row in contract.get("required_tool_protocols", [])
@@ -3657,6 +3769,37 @@ def plan_verification(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
             "candidate_verification_review_artifact": compact_review_for_planner(review_artifact),
             "retry_reconciliation_contract": artifact_contract.get("retry_reconciliation_contract", {}),
             "stage5_gate_dag_refinement_policy": {
+                "active_validation_policy": active_verification_policy(),
+                "compile_only_acceptance_contract": {
+                    "enabled": active_verification_policy() == COMPILE_ONLY_POLICY,
+                    "acceptance": (
+                        "At this Stage-6 planning boundary, require only current-source VCS compilation, elaboration, and linking for the three ordered verification layers."
+                        if active_verification_policy() == COMPILE_ONLY_POLICY
+                        else "Use the full semantic simulation and runtime acceptance contract."
+                    ),
+                    "deferred_protocols": ["board_runtime"]
+                    if active_verification_policy() == COMPILE_ONLY_POLICY
+                    else [],
+                    "deferred_gate_classes": [
+                        "golden_comparison",
+                        "functional_simulation_execution",
+                        "runtime_weight_loading",
+                        "board_runtime",
+                    ]
+                    if active_verification_policy() == COMPILE_ONLY_POLICY
+                    else [],
+                    "board_runtime_missing_is_current_stage_blocker": False
+                    if active_verification_policy() == COMPILE_ONLY_POLICY
+                    else True,
+                    "forbid_actions": ["system_capability_gap"]
+                    if active_verification_policy() == COMPILE_ONLY_POLICY
+                    else [],
+                    "required_current_layer_gate_order": [
+                        "operator leaf modules",
+                        "connected single transformer-layer kernel",
+                        "exact board AXI/DDR wrapper",
+                    ],
+                },
                 "required_order": [
                     "operator leaf modules",
                     "single transformer-layer LLM compute kernel",
@@ -3702,6 +3845,11 @@ def plan_verification(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
                 ),
                 "anti_spin_rule": "Do not treat lower-layer pass evidence as absolute, and do not broadly reopen lower layers without bound contradictory trace evidence.",
             },
+            "compile_only_planner_instruction": (
+                "When validation_policy is vcs_compile_only, board_runtime configured=false is an expected deferred deployment fact. Do not declare a system capability gap, do not require a board_runtime protocol for this Stage-6 promotion, and do not add golden/runtime/simulation prerequisites. Return only the bounded stage5 gate-contract refinement or validation action needed to hand off the existing compile-only selector."
+                if active_verification_policy() == COMPILE_ONLY_POLICY
+                else "Use the full semantic simulation/runtime contract; missing board_runtime remains a real blocker.",
+            ),
             "design_team": compact_team_summary_for_planner(team_summary(team)),
             "source_sacg_state": str(source_state),
         },
