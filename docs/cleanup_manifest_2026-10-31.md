@@ -51,3 +51,18 @@ No files are removed from source, run result, report, or experiment directories.
 - The remote toolchain (approximately 8.6 MiB), shared simulation-library probe (approximately 814 MiB), and all three latest remote mechanism experiment directories remain present.
 - No source files, experiment result files, timing histories, QoR reports, tool reports, generated RTL, backups, or model data were removed. No test was run because source code was not modified.
 - Long-running remote Vivado processes outside the verified cleanup targets were left running, including processes owned by another user and the separate `flightloop_plan2_core_ooc_192ch_8head_20261029` job. Their status is outside this cleanup's scope.
+
+## Recheck and Cleanup - 2026-11-20
+
+The local repository and remote host were rechecked before removing regenerated build products. No active local process was using this repository. On the remote host, no VCS process was active. The existing long-running Vivado processes had no command line referencing the selected `spatialaccagent_artifacts` cleanup targets and were left untouched.
+
+| Target | Basis | Before | Result |
+|---|---|---:|---|
+| Local project `__pycache__/` and `*.pyc` | Python bytecode is reproducible from retained source, and no local project process was active | 10 directories, 224 files, 14,278,059 bytes | Removed; 0 directories and 0 bytecode files remain |
+| Local `.pytest_cache/` | Regenerable pytest cache | 92 KiB | Removed |
+| Remote `spatialaccagent_artifacts/board_vcs/**/vcs_work/` and `vcs_lib/` | Each selected attempt had a sibling `stage.tar.gz` and `reports/vcs_compile.log`; all 427 source archives and 427 compile logs were retained | 196 directories, approximately 5.0 GiB | Removed; 0 VCS work/library directories remain |
+| Remote `spatialaccagent_artifacts/vivado_app_shell_runtime/**/.Xil/` | 55 directories were empty; no selected attempt was active | 55 empty directories | Removed |
+
+Remote `/home` free space increased from 40 GiB to 45 GiB. `board_vcs/` decreased from 19 GiB to 14 GiB. `semantic_vcs/` remains 43 GiB, including 351 `vcs_lib/` directories, because its attempts do not have the source archives needed to establish safe regeneration. The Vivado runtime tree remains 4.4 GiB with its reports and source closures.
+
+The local 46 MiB root `target/`, 31 MiB active `.metals/` index, all 95 run-local `.sbt_codegen_cache/` directories (14 GiB), run results, logs, waveforms, generated RTL, model data, backups, and U280 probe/evidence directories were retained. No experiment or tool process was started or stopped. No tests were run because no source code changed.
